@@ -1,0 +1,723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ScreenBeam</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<style>
+  :root {
+    --bg:       #050508;
+    --surface:  #0d0d14;
+    --border:   #1a1a2e;
+    --accent:   #00e5ff;
+    --accent2:  #7b2fff;
+    --glow:     rgba(0,229,255,0.15);
+    --text:     #e8e8f0;
+    --muted:    #555570;
+    --success:  #00ff9d;
+    --error:    #ff4466;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* Ambient background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 60% 40% at 20% 50%, rgba(123,47,255,0.06) 0%, transparent 70%),
+      radial-gradient(ellipse 50% 35% at 80% 50%, rgba(0,229,255,0.05) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  /* Scanline texture */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.03) 2px,
+      rgba(0,0,0,0.03) 4px
+    );
+    pointer-events: none;
+    z-index: 999;
+  }
+
+  /* ── CARD ────────────────────────────────── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 48px 40px;
+    width: 460px;
+    max-width: 95vw;
+    position: relative;
+    box-shadow: 0 0 0 1px rgba(0,229,255,0.04), 0 32px 64px rgba(0,0,0,0.6);
+    animation: fadeUp 0.4s ease both;
+  }
+
+  @keyframes fadeUp {
+    from { opacity:0; transform: translateY(16px); }
+    to   { opacity:1; transform: translateY(0); }
+  }
+
+  /* Top glow line */
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 10%; right: 10%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), var(--accent2), transparent);
+    border-radius: 50%;
+  }
+
+  /* ── LOGO ─────────────────────────────────── */
+  .logo {
+    font-size: 28px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 4px;
+  }
+
+  .logo-dot {
+    display: inline-block;
+    width: 8px; height: 8px;
+    background: var(--accent);
+    border-radius: 50%;
+    margin-left: 3px;
+    vertical-align: middle;
+    box-shadow: 0 0 8px var(--accent);
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%,100% { opacity:1; transform: scale(1); }
+    50%      { opacity:0.5; transform: scale(0.8); }
+  }
+
+  .subtitle {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 36px;
+  }
+
+  /* ── BUTTONS ──────────────────────────────── */
+  .btn {
+    width: 100%;
+    padding: 14px 20px;
+    border-radius: 10px;
+    border: none;
+    font-family: 'Syne', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    letter-spacing: 0.3px;
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent2), #5500cc);
+    color: #fff;
+    box-shadow: 0 4px 20px rgba(123,47,255,0.3);
+  }
+
+  .btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 28px rgba(123,47,255,0.45);
+  }
+
+  .btn-primary:active { transform: translateY(0); }
+
+  .btn-secondary {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    margin-top: 10px;
+  }
+
+  .btn-secondary:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none !important;
+  }
+
+  /* ── STATUS ───────────────────────────────── */
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--border);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    margin-bottom: 20px;
+  }
+
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .status-dot.waiting  { background: var(--muted); }
+  .status-dot.live     { background: var(--success); box-shadow: 0 0 8px var(--success); animation: pulse 1.5s infinite; }
+  .status-dot.error    { background: var(--error); }
+  .status-dot.loading  { background: var(--accent); animation: pulse 1s infinite; }
+
+  /* ── ROOM CARD ────────────────────────────── */
+  .room-block {
+    margin-top: 28px;
+    padding: 24px;
+    border-radius: 12px;
+    background: rgba(0,229,255,0.03);
+    border: 1px solid rgba(0,229,255,0.12);
+  }
+
+  .room-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .room-code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 6px;
+    text-shadow: 0 0 20px rgba(0,229,255,0.4);
+    margin-bottom: 16px;
+    word-break: break-all;
+  }
+
+  .room-url {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text);
+    background: rgba(0,0,0,0.4);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 14px;
+    word-break: break-all;
+    line-height: 1.5;
+    cursor: pointer;
+    transition: border-color 0.2s;
+    position: relative;
+  }
+
+  .room-url:hover { border-color: var(--accent); }
+
+  .copy-hint {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 6px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .copy-hint.copied { color: var(--success); }
+
+  .viewer-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .viewer-badge.connected { color: var(--success); }
+
+  /* ── INPUT ────────────────────────────────── */
+  .input-group { position: relative; margin-bottom: 16px; }
+
+  input {
+    width: 100%;
+    padding: 14px 16px;
+    background: rgba(0,0,0,0.4);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 16px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    text-align: center;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  input::placeholder {
+    letter-spacing: 1px;
+    color: var(--muted);
+    text-transform: none;
+    font-size: 13px;
+  }
+
+  input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(0,229,255,0.08);
+  }
+
+  /* ── DIVIDER ──────────────────────────────── */
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 24px 0;
+    color: var(--muted);
+    font-size: 11px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .divider::before, .divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ── RECEIVER VIDEO ───────────────────────── */
+  #receiverVideo {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    object-fit: contain;
+    background: #000;
+    display: none;
+    z-index: 100;
+  }
+
+  /* ── TV INSTRUCTIONS ──────────────────────── */
+  .instructions {
+    margin-top: 28px;
+    padding: 20px;
+    border-radius: 10px;
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--border);
+  }
+
+  .instructions-title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  .step {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 10px;
+    font-size: 13px;
+    color: var(--text);
+    line-height: 1.5;
+    align-items: flex-start;
+  }
+
+  .step:last-child { margin-bottom: 0; }
+
+  .step-num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--accent2);
+    background: rgba(123,47,255,0.15);
+    border-radius: 4px;
+    padding: 1px 7px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  /* ── MODE TOGGLE ──────────────────────────── */
+  .mode-toggle {
+    margin-top: 20px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .mode-toggle a {
+    color: var(--accent);
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .mode-toggle a:hover { text-decoration: underline; }
+
+  /* ── SHARING INDICATOR ────────────────────── */
+  .sharing-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 20px;
+    font-size: 13px;
+    color: var(--success);
+  }
+
+  .rec-dot {
+    width: 10px; height: 10px;
+    background: var(--error);
+    border-radius: 50%;
+    animation: pulse 1.2s infinite;
+    box-shadow: 0 0 8px var(--error);
+  }
+
+  /* ── STOP BTN ─────────────────────────────── */
+  .btn-stop {
+    background: rgba(255,68,102,0.1);
+    border: 1px solid rgba(255,68,102,0.3);
+    color: var(--error);
+    margin-top: 10px;
+  }
+
+  .btn-stop:hover {
+    background: rgba(255,68,102,0.2);
+    border-color: var(--error);
+  }
+
+</style>
+</head>
+<body>
+
+<video id="receiverVideo" autoplay playsinline></video>
+<div id="app"></div>
+
+<script>
+const params  = new URLSearchParams(location.search);
+const isRecv  = params.has('receive') || params.has('r');
+const roomArg = params.get('room') || params.get('r') || '';
+
+isRecv ? renderReceiver() : renderSender();
+
+/* ═══════════════════════════════
+   SENDER
+═══════════════════════════════ */
+function renderSender() {
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="card">
+      <div class="logo">ScreenBeam<span class="logo-dot"></span></div>
+      <div class="subtitle">Local Network · WebRTC · Zero Lag</div>
+
+      <div class="status-bar" id="senderStatus">
+        <div class="status-dot waiting"></div>
+        <span>Ready to cast</span>
+      </div>
+
+      <button class="btn btn-primary" id="startBtn" onclick="startSharing()">
+        ▶ &nbsp; Share My Screen
+      </button>
+
+      <div id="shareControls" style="display:none">
+        <div class="sharing-indicator">
+          <div class="rec-dot"></div>
+          <span>Sharing — stream is live</span>
+        </div>
+        <div class="room-block" id="roomBlock"></div>
+        <button class="btn btn-stop" onclick="stopSharing()">■ &nbsp; Stop Sharing</button>
+      </div>
+
+      <div class="divider">how to connect tv</div>
+
+      <div class="instructions">
+        <div class="instructions-title">Setup (one time only)</div>
+        <div class="step">
+          <span class="step-num">1</span>
+          <span>In a terminal: <code style="color:var(--accent); font-family:JetBrains Mono,monospace">python -m http.server 8080</code> in the folder with this file</span>
+        </div>
+        <div class="step">
+          <span class="step-num">2</span>
+          <span>On TV browser, open the URL shown after you start sharing</span>
+        </div>
+        <div class="step">
+          <span class="step-num">3</span>
+          <span>Hit share, TV connects instantly — both stay on same WiFi</span>
+        </div>
+      </div>
+
+      <div class="mode-toggle">
+        On the TV? <a onclick="switchToReceiver()">Switch to receiver mode</a>
+      </div>
+    </div>
+  `;
+}
+
+let activePeer   = null;
+let activeStream = null;
+
+async function startSharing() {
+  const btn = document.getElementById('startBtn');
+  btn.disabled = true;
+  btn.textContent = 'Requesting screen access…';
+
+  try {
+    activeStream = await navigator.mediaDevices.getDisplayMedia({
+      video: { frameRate: { ideal: 60, max: 60 }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: { echoCancellation: false, noiseSuppression: false, sampleRate: 48000 }
+    });
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = '▶  Share My Screen';
+    setStatus('error', 'Screen access denied — try again');
+    return;
+  }
+
+  activeStream.getVideoTracks()[0].onended = () => stopSharing();
+
+  const roomId = 'SB' + Math.random().toString(36).substr(2,5).toUpperCase();
+  setStatus('loading', 'Initialising peer connection…');
+
+  activePeer = new Peer(roomId, {
+    config: {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+      ]
+    }
+  });
+
+  let viewers = 0;
+
+  activePeer.on('open', () => {
+    btn.style.display = 'none';
+    document.getElementById('shareControls').style.display = 'block';
+
+    const host = location.hostname;
+    const port = location.port ? ':' + location.port : ':8080';
+    const tvUrl = `http://${host}${port}/screenbeam.html?receive&room=${roomId}`;
+
+    document.getElementById('roomBlock').innerHTML = `
+      <div class="room-label">Room code</div>
+      <div class="room-code" id="theCode">${roomId}</div>
+      <div class="room-label">Open this URL on your TV browser</div>
+      <div class="room-url" id="tvUrlBox" onclick="copyUrl(this, '${tvUrl}')">${tvUrl}</div>
+      <div class="copy-hint" id="copyHint">↑ tap to copy</div>
+      <div class="viewer-badge" id="viewerBadge">
+        <div class="status-dot waiting"></div>
+        Waiting for TV to connect…
+      </div>
+    `;
+    setStatus('live', 'Live — waiting for viewer');
+  });
+
+  activePeer.on('call', call => {
+    call.answer(activeStream);
+    viewers++;
+    updateViewers(viewers);
+    setStatus('live', `Streaming to ${viewers} device${viewers>1?'s':''}`);
+
+    call.on('close',  () => { viewers = Math.max(0, viewers-1); updateViewers(viewers); });
+    call.on('error',  () => { viewers = Math.max(0, viewers-1); updateViewers(viewers); });
+  });
+
+  activePeer.on('error', err => {
+    if (err.type === 'unavailable-id') { startSharing(); return; }
+    setStatus('error', 'Peer error: ' + err.type);
+  });
+}
+
+function updateViewers(n) {
+  const badge = document.getElementById('viewerBadge');
+  if (!badge) return;
+  if (n === 0) {
+    badge.className = 'viewer-badge';
+    badge.innerHTML = `<div class="status-dot waiting"></div>Waiting for TV to connect…`;
+  } else {
+    badge.className = 'viewer-badge connected';
+    badge.innerHTML = `<div class="status-dot live"></div>${n} device${n>1?'s':''} connected`;
+  }
+}
+
+function stopSharing() {
+  activeStream?.getTracks().forEach(t => t.stop());
+  activePeer?.destroy();
+  activePeer = null; activeStream = null;
+  renderSender();
+  setStatus('waiting', 'Sharing stopped');
+}
+
+function copyUrl(el, url) {
+  navigator.clipboard.writeText(url).then(() => {
+    const hint = document.getElementById('copyHint');
+    hint.textContent = '✓ Copied!';
+    hint.classList.add('copied');
+    setTimeout(() => { hint.textContent = '↑ tap to copy'; hint.classList.remove('copied'); }, 2000);
+  });
+}
+
+function setStatus(type, msg) {
+  const bar = document.getElementById('senderStatus');
+  if (!bar) return;
+  const dot = bar.querySelector('.status-dot');
+  dot.className = 'status-dot ' + type;
+  bar.querySelector('span').textContent = msg;
+}
+
+function switchToReceiver() {
+  const r = prompt('Enter Room Code:');
+  if (r) location.href = `?receive&room=${r.trim().toUpperCase()}`;
+}
+
+/* ═══════════════════════════════
+   RECEIVER
+═══════════════════════════════ */
+function renderReceiver() {
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <div class="card">
+      <div class="logo">ScreenBeam<span class="logo-dot"></span></div>
+      <div class="subtitle">Receiver Mode · TV / Display</div>
+
+      <div class="status-bar" id="recvStatus">
+        <div class="status-dot waiting"></div>
+        <span>${roomArg ? 'Connecting to ' + roomArg + '…' : 'Enter room code to connect'}</span>
+      </div>
+
+      <div class="input-group">
+        <input type="text" id="codeInput" placeholder="Enter Room Code" maxlength="10"
+          value="${roomArg}" oninput="this.value=this.value.toUpperCase()">
+      </div>
+
+      <button class="btn btn-primary" id="connectBtn" onclick="connectReceiver()">
+        ⟶ &nbsp; Connect to Stream
+      </button>
+
+      <div class="mode-toggle" style="margin-top:20px">
+        On the PC/phone? <a href="?">Switch to sender</a>
+      </div>
+    </div>
+  `;
+
+  if (roomArg) {
+    setTimeout(connectReceiver, 600);
+  }
+}
+
+let recvPeer = null;
+
+function connectReceiver() {
+  const roomId = (document.getElementById('codeInput')?.value || roomArg).trim().toUpperCase();
+  if (!roomId) { recvSetStatus('error', 'Enter a room code'); return; }
+
+  const btn = document.getElementById('connectBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Connecting…'; }
+  recvSetStatus('loading', 'Reaching sender…');
+
+  if (recvPeer) { try { recvPeer.destroy(); } catch(_){} }
+
+  recvPeer = new Peer(undefined, {
+    config: {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+      ]
+    }
+  });
+
+  recvPeer.on('open', () => {
+    recvSetStatus('loading', 'Peer ready — calling sender…');
+
+    // Create minimal fake stream to initiate call (PeerJS requires caller to have a stream)
+    const canvas = document.createElement('canvas');
+    canvas.width = 2; canvas.height = 2;
+    const fakeStream = canvas.captureStream(1);
+
+    const call = recvPeer.call(roomId, fakeStream);
+
+    if (!call) {
+      recvSetStatus('error', 'Could not reach sender — is the code correct?');
+      if (btn) { btn.disabled = false; btn.textContent = '⟶  Connect to Stream'; }
+      return;
+    }
+
+    call.on('stream', stream => {
+      const vid = document.getElementById('receiverVideo');
+      vid.srcObject = stream;
+      vid.style.display = 'block';
+
+      // Try fullscreen
+      const go = vid.requestFullscreen || vid.webkitRequestFullscreen || vid.mozRequestFullScreen;
+      if (go) go.call(vid).catch(() => {});
+
+      document.getElementById('app').style.display = 'none';
+      document.body.style.overflow = 'hidden';
+      document.body.style.background = '#000';
+
+      // Tap to exit fullscreen overlay
+      vid.onclick = () => {
+        if (document.fullscreenElement) document.exitFullscreen();
+        else {
+          vid.style.display = 'none';
+          document.getElementById('app').style.display = 'flex';
+          document.body.style.background = '';
+          renderReceiver();
+        }
+      };
+    });
+
+    call.on('error',  e => recvSetStatus('error', 'Call error: ' + e));
+    call.on('close',  ()  => {
+      document.getElementById('receiverVideo').style.display = 'none';
+      document.getElementById('app').style.display = 'flex';
+      document.body.style.background = '';
+      renderReceiver();
+      recvSetStatus('error', 'Stream ended — sender disconnected');
+    });
+  });
+
+  recvPeer.on('error', err => {
+    recvSetStatus('error', err.type === 'peer-unavailable'
+      ? 'Sender not found — check code and try again'
+      : 'Error: ' + err.type);
+    if (btn) { btn.disabled = false; btn.textContent = '⟶  Connect to Stream'; }
+  });
+}
+
+function recvSetStatus(type, msg) {
+  const bar = document.getElementById('recvStatus');
+  if (!bar) return;
+  bar.querySelector('.status-dot').className = 'status-dot ' + type;
+  bar.querySelector('span').textContent = msg;
+}
+</script>
+</body>
+</html>
