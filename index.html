@@ -420,6 +420,18 @@
 <div id="app"></div>
 
 <script>
+// Global error trap — shows errors on TV instead of silent black screen
+window.onerror = function(msg, src, line) {
+  var app = document.getElementById('app');
+  if (app && app.innerHTML.length < 10) {
+    app.innerHTML = '<div style="color:#ff4466;font-family:monospace;padding:40px;max-width:600px">'
+      + '<div style="font-size:20px;margin-bottom:12px">ScreenBeam JS Error</div>'
+      + '<div style="font-size:13px;opacity:0.8">' + msg + '</div>'
+      + '<div style="font-size:11px;opacity:0.5;margin-top:8px">Line ' + line + '</div>'
+      + '</div>';
+  }
+};
+
 // Hash-based routing: screenbeam.vercel.app/#ROOMCODE
 // No query params, no port numbers, works on Vercel as-is
 const hashCode = location.hash.slice(1).toUpperCase().trim();
@@ -569,8 +581,8 @@ function updateViewers(n) {
 }
 
 function stopSharing() {
-  activeStream?.getTracks().forEach(t => t.stop());
-  activePeer?.destroy();
+  if (activeStream) { activeStream.getTracks().forEach(function(t) { t.stop(); }); }
+  if (activePeer) { try { activePeer.destroy(); } catch(e) {} }
   activePeer = null; activeStream = null;
   renderSender();
   setStatus('waiting', 'Sharing stopped');
@@ -638,7 +650,7 @@ let retryTimeout = null;
 
 function connectReceiver() {
   const codeInput = document.getElementById('codeInput');
-  const roomId = (codeInput?.value || roomArg).trim().toUpperCase();
+  const roomId = ((codeInput ? codeInput.value : '') || roomArg).trim().toUpperCase();
   if (!roomId) { recvSetStatus('error', 'Enter a room code'); return; }
 
   const btn = document.getElementById('connectBtn');
@@ -682,21 +694,21 @@ function connectReceiver() {
       vid.muted = true; // start muted for autoplay policy
       vid.style.display = 'block';
 
-      vid.play().then(() => {
-        // Try to unmute after play starts
+      vid.play().then(function() {
         vid.muted = false;
-      }).catch(() => {
-        // Autoplay blocked — show tap-to-play overlay
+      }).catch(function() {
         recvSetStatus('loading', 'Tap anywhere to start playback');
-        document.addEventListener('click', () => {
+        function handleTap() {
           vid.muted = false;
-          vid.play().catch(() => {});
-        }, { once: true });
+          vid.play().catch(function() {});
+          document.removeEventListener('click', handleTap);
+        }
+        document.addEventListener('click', handleTap);
       });
 
-      // Try fullscreen
-      const go = vid.requestFullscreen || vid.webkitRequestFullscreen || vid.mozRequestFullScreen;
-      if (go) go.call(vid).catch(() => {});
+      // Try fullscreen (wrapped — webkitRequestFullscreen may not return a Promise on TV)
+      var go = vid.requestFullscreen || vid.webkitRequestFullscreen || vid.mozRequestFullScreen;
+      if (go) { try { go.call(vid); } catch(e) {} }
 
       document.getElementById('app').style.display = 'none';
       document.body.style.overflow = 'hidden';
