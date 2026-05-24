@@ -420,9 +420,11 @@
 <div id="app"></div>
 
 <script>
-const params  = new URLSearchParams(location.search);
-const isRecv  = params.has('receive') || params.has('r');
-const roomArg = params.get('room') || params.get('r') || '';
+// Hash-based routing: screenbeam.vercel.app/#ROOMCODE
+// No query params, no port numbers, works on Vercel as-is
+const hashCode = location.hash.slice(1).toUpperCase().trim();
+const isRecv   = hashCode.length > 0;
+const roomArg  = hashCode;
 
 isRecv ? renderReceiver() : renderSender();
 
@@ -457,18 +459,18 @@ function renderSender() {
       <div class="divider">how to connect tv</div>
 
       <div class="instructions">
-        <div class="instructions-title">Setup (one time only)</div>
+        <div class="instructions-title">How to connect TV</div>
         <div class="step">
           <span class="step-num">1</span>
-          <span>In a terminal: <code style="color:var(--accent); font-family:JetBrains Mono,monospace">python -m http.server 8080</code> in the folder with this file</span>
+          <span>Click <strong>Share My Screen</strong> on this device — a short URL appears</span>
         </div>
         <div class="step">
           <span class="step-num">2</span>
-          <span>On TV browser, open the URL shown after you start sharing</span>
+          <span>On TV browser, type: <code style="color:var(--accent); font-family:JetBrains Mono,monospace">screenbeam.vercel.app/#ROOMCODE</code></span>
         </div>
         <div class="step">
           <span class="step-num">3</span>
-          <span>Hit share, TV connects instantly — both stay on same WiFi</span>
+          <span>TV connects instantly — bookmark the base URL to save time next time</span>
         </div>
       </div>
 
@@ -520,9 +522,9 @@ async function startSharing() {
     btn.style.display = 'none';
     document.getElementById('shareControls').style.display = 'block';
 
-    const host = location.hostname;
-    const port = location.port ? ':' + location.port : ':8080';
-    const tvUrl = `http://${host}${port}/screenbeam.html?receive&room=${roomId}`;
+    // FIX: Always use the real Vercel domain — never use location.port (was appending :8080!)
+    // FIX: Hash routing — TV just types screenbeam.vercel.app/#ROOMCODE
+    const tvUrl = `https://screenbeam.vercel.app/#${roomId}`;
 
     document.getElementById('roomBlock').innerHTML = `
       <div class="room-label">Room code</div>
@@ -593,7 +595,7 @@ function setStatus(type, msg) {
 
 function switchToReceiver() {
   const r = prompt('Enter Room Code:');
-  if (r) location.href = `?receive&room=${r.trim().toUpperCase()}`;
+  if (r) { location.hash = r.trim().toUpperCase(); location.reload(); }
 }
 
 /* ═══════════════════════════════
@@ -621,7 +623,7 @@ function renderReceiver() {
       </button>
 
       <div class="mode-toggle" style="margin-top:20px">
-        On the PC/phone? <a href="?">Switch to sender</a>
+        On the PC/phone? <a href="/" onclick="location.hash='';location.href='/';return false;">Switch to sender</a>
       </div>
     </div>
   `;
@@ -632,23 +634,25 @@ function renderReceiver() {
 }
 
 let recvPeer = null;
+let retryTimeout = null;
 
 function connectReceiver() {
-  const roomId = (document.getElementById('codeInput')?.value || roomArg).trim().toUpperCase();
+  const codeInput = document.getElementById('codeInput');
+  const roomId = (codeInput?.value || roomArg).trim().toUpperCase();
   if (!roomId) { recvSetStatus('error', 'Enter a room code'); return; }
 
   const btn = document.getElementById('connectBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Connecting…'; }
   recvSetStatus('loading', 'Reaching sender…');
 
-  if (recvPeer) { try { recvPeer.destroy(); } catch(_){} }
+  if (recvPeer) { try { recvPeer.destroy(); } catch(_){} recvPeer = null; }
+  if (retryTimeout) { clearTimeout(retryTimeout); retryTimeout = null; }
 
   recvPeer = new Peer(undefined, {
     config: {
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
       ]
     }
   });
@@ -656,10 +660,13 @@ function connectReceiver() {
   recvPeer.on('open', () => {
     recvSetStatus('loading', 'Peer ready — calling sender…');
 
-    // Create minimal fake stream to initiate call (PeerJS requires caller to have a stream)
-    const canvas = document.createElement('canvas');
-    canvas.width = 2; canvas.height = 2;
-    const fakeStream = canvas.captureStream(1);
+    // Use a tiny canvas stream so PeerJS can initiate the call
+    let fakeStream = null;
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = 2; canvas.height = 2;
+      if (canvas.captureStream) fakeStream = canvas.captureStream(1);
+    } catch(_) {}
 
     const call = recvPeer.call(roomId, fakeStream);
 
@@ -672,7 +679,20 @@ function connectReceiver() {
     call.on('stream', stream => {
       const vid = document.getElementById('receiverVideo');
       vid.srcObject = stream;
+      vid.muted = true; // start muted for autoplay policy
       vid.style.display = 'block';
+
+      vid.play().then(() => {
+        // Try to unmute after play starts
+        vid.muted = false;
+      }).catch(() => {
+        // Autoplay blocked — show tap-to-play overlay
+        recvSetStatus('loading', 'Tap anywhere to start playback');
+        document.addEventListener('click', () => {
+          vid.muted = false;
+          vid.play().catch(() => {});
+        }, { once: true });
+      });
 
       // Try fullscreen
       const go = vid.requestFullscreen || vid.webkitRequestFullscreen || vid.mozRequestFullScreen;
@@ -682,7 +702,6 @@ function connectReceiver() {
       document.body.style.overflow = 'hidden';
       document.body.style.background = '#000';
 
-      // Tap to exit fullscreen overlay
       vid.onclick = () => {
         if (document.fullscreenElement) document.exitFullscreen();
         else {
@@ -695,7 +714,7 @@ function connectReceiver() {
     });
 
     call.on('error',  e => recvSetStatus('error', 'Call error: ' + e));
-    call.on('close',  ()  => {
+    call.on('close',  () => {
       document.getElementById('receiverVideo').style.display = 'none';
       document.getElementById('app').style.display = 'flex';
       document.body.style.background = '';
@@ -705,10 +724,14 @@ function connectReceiver() {
   });
 
   recvPeer.on('error', err => {
-    recvSetStatus('error', err.type === 'peer-unavailable'
-      ? 'Sender not found — check code and try again'
-      : 'Error: ' + err.type);
-    if (btn) { btn.disabled = false; btn.textContent = '⟶  Connect to Stream'; }
+    if (err.type === 'peer-unavailable') {
+      // Sender not ready yet — auto retry every 3 seconds
+      recvSetStatus('loading', 'Waiting for sender to go live… retrying');
+      retryTimeout = setTimeout(() => connectReceiver(), 3000);
+    } else {
+      recvSetStatus('error', 'Error: ' + err.type);
+      if (btn) { btn.disabled = false; btn.textContent = '⟶  Connect to Stream'; }
+    }
   });
 }
 
