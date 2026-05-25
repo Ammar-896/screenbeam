@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ScreenBeam</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 <style>
   :root {
     --bg:       #050508;
@@ -19,472 +18,208 @@
     --success:  #00ff9d;
     --error:    #ff4466;
   }
-
   * { box-sizing: border-box; margin: 0; padding: 0; }
-
   body {
-    background: var(--bg);
-    color: var(--text);
+    background: var(--bg); color: var(--text);
     font-family: 'Syne', sans-serif;
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-    position: relative;
+    min-height: 100vh; display: flex;
+    align-items: center; justify-content: center;
+    overflow: hidden; position: relative;
   }
-
-  /* Ambient background */
   body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
+    content: ''; position: fixed; inset: 0;
     background:
       radial-gradient(ellipse 60% 40% at 20% 50%, rgba(123,47,255,0.06) 0%, transparent 70%),
       radial-gradient(ellipse 50% 35% at 80% 50%, rgba(0,229,255,0.05) 0%, transparent 70%);
     pointer-events: none;
   }
-
-  /* Scanline texture */
   body::after {
-    content: '';
-    position: fixed;
-    inset: 0;
-    background: repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 2px,
-      rgba(0,0,0,0.03) 2px,
-      rgba(0,0,0,0.03) 4px
-    );
-    pointer-events: none;
-    z-index: 999;
+    content: ''; position: fixed; inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+    pointer-events: none; z-index: 999;
   }
-
-  /* ── CARD ────────────────────────────────── */
   .card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 48px 40px;
-    width: 460px;
-    max-width: 95vw;
-    position: relative;
-    box-shadow: 0 0 0 1px rgba(0,229,255,0.04), 0 32px 64px rgba(0,0,0,0.6);
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 48px 40px; width: 460px; max-width: 95vw;
+    position: relative; box-shadow: 0 0 0 1px rgba(0,229,255,0.04), 0 32px 64px rgba(0,0,0,0.6);
     animation: fadeUp 0.4s ease both;
   }
-
-  @keyframes fadeUp {
-    from { opacity:0; transform: translateY(16px); }
-    to   { opacity:1; transform: translateY(0); }
-  }
-
-  /* Top glow line */
+  @keyframes fadeUp { from { opacity:0; transform: translateY(16px); } to { opacity:1; transform: translateY(0); } }
   .card::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 10%; right: 10%;
-    height: 1px;
+    content: ''; position: absolute; top: 0; left: 10%; right: 10%; height: 1px;
     background: linear-gradient(90deg, transparent, var(--accent), var(--accent2), transparent);
     border-radius: 50%;
   }
-
-  /* ── LOGO ─────────────────────────────────── */
   .logo {
-    font-size: 28px;
-    font-weight: 800;
-    letter-spacing: -0.5px;
+    font-size: 28px; font-weight: 800; letter-spacing: -0.5px;
     background: linear-gradient(135deg, var(--accent), var(--accent2));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    margin-bottom: 4px;
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text; margin-bottom: 4px;
   }
-
   .logo-dot {
-    display: inline-block;
-    width: 8px; height: 8px;
-    background: var(--accent);
-    border-radius: 50%;
-    margin-left: 3px;
-    vertical-align: middle;
-    box-shadow: 0 0 8px var(--accent);
-    animation: pulse 2s ease-in-out infinite;
+    display: inline-block; width: 8px; height: 8px; background: var(--accent);
+    border-radius: 50%; margin-left: 3px; vertical-align: middle;
+    box-shadow: 0 0 8px var(--accent); animation: pulse 2s ease-in-out infinite;
   }
-
-  @keyframes pulse {
-    0%,100% { opacity:1; transform: scale(1); }
-    50%      { opacity:0.5; transform: scale(0.8); }
-  }
-
+  @keyframes pulse { 0%,100% { opacity:1; transform: scale(1); } 50% { opacity:0.5; transform: scale(0.8); } }
   .subtitle {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    color: var(--muted);
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    margin-bottom: 36px;
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted);
+    letter-spacing: 2px; text-transform: uppercase; margin-bottom: 36px;
   }
-
-  /* ── BUTTONS ──────────────────────────────── */
   .btn {
-    width: 100%;
-    padding: 14px 20px;
-    border-radius: 10px;
-    border: none;
-    font-family: 'Syne', sans-serif;
-    font-size: 15px;
-    font-weight: 700;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    letter-spacing: 0.3px;
+    width: 100%; padding: 14px 20px; border-radius: 10px; border: none;
+    font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700;
+    cursor: pointer; transition: all 0.2s ease; letter-spacing: 0.3px;
   }
-
-  .btn-primary {
-    background: linear-gradient(135deg, var(--accent2), #5500cc);
-    color: #fff;
-    box-shadow: 0 4px 20px rgba(123,47,255,0.3);
-  }
-
-  .btn-primary:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 8px 28px rgba(123,47,255,0.45);
-  }
-
+  .btn-primary { background: linear-gradient(135deg, var(--accent2), #5500cc); color: #fff; box-shadow: 0 4px 20px rgba(123,47,255,0.3); }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 28px rgba(123,47,255,0.45); }
   .btn-primary:active { transform: translateY(0); }
-
-  .btn-secondary {
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--muted);
-    margin-top: 10px;
-  }
-
-  .btn-secondary:hover {
-    border-color: var(--accent);
-    color: var(--accent);
-  }
-
-  .btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-    transform: none !important;
-  }
-
-  /* ── STATUS ───────────────────────────────── */
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important; }
   .status-bar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 12px 16px;
-    border-radius: 8px;
-    background: rgba(0,0,0,0.3);
-    border: 1px solid var(--border);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
-    margin-bottom: 20px;
+    display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+    border-radius: 8px; background: rgba(0,0,0,0.3); border: 1px solid var(--border);
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; margin-bottom: 20px;
   }
-
-  .status-dot {
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-
-  .status-dot.waiting  { background: var(--muted); }
-  .status-dot.live     { background: var(--success); box-shadow: 0 0 8px var(--success); animation: pulse 1.5s infinite; }
-  .status-dot.error    { background: var(--error); }
-  .status-dot.loading  { background: var(--accent); animation: pulse 1s infinite; }
-
-  /* ── ROOM CARD ────────────────────────────── */
-  .room-block {
-    margin-top: 28px;
-    padding: 24px;
-    border-radius: 12px;
-    background: rgba(0,229,255,0.03);
-    border: 1px solid rgba(0,229,255,0.12);
-  }
-
-  .room-label {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
-    color: var(--muted);
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    margin-bottom: 8px;
-  }
-
-  .room-code {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 32px;
-    font-weight: 700;
-    color: var(--accent);
-    letter-spacing: 6px;
-    text-shadow: 0 0 20px rgba(0,229,255,0.4);
-    margin-bottom: 16px;
-    word-break: break-all;
-  }
-
-  .room-url {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    color: var(--text);
-    background: rgba(0,0,0,0.4);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 10px 14px;
-    word-break: break-all;
-    line-height: 1.5;
-    cursor: pointer;
-    transition: border-color 0.2s;
-    position: relative;
-  }
-
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .status-dot.waiting { background: var(--muted); }
+  .status-dot.live    { background: var(--success); box-shadow: 0 0 8px var(--success); animation: pulse 1.5s infinite; }
+  .status-dot.error   { background: var(--error); }
+  .status-dot.loading { background: var(--accent); animation: pulse 1s infinite; }
+  .room-block { margin-top: 28px; padding: 24px; border-radius: 12px; background: rgba(0,229,255,0.03); border: 1px solid rgba(0,229,255,0.12); }
+  .room-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; }
+  .room-code { font-family: 'JetBrains Mono', monospace; font-size: 32px; font-weight: 700; color: var(--accent); letter-spacing: 6px; text-shadow: 0 0 20px rgba(0,229,255,0.4); margin-bottom: 16px; word-break: break-all; }
+  .room-url { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text); background: rgba(0,0,0,0.4); border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; word-break: break-all; line-height: 1.5; cursor: pointer; transition: border-color 0.2s; }
   .room-url:hover { border-color: var(--accent); }
-
-  .copy-hint {
-    font-size: 10px;
-    color: var(--muted);
-    margin-top: 6px;
-    font-family: 'JetBrains Mono', monospace;
-  }
-
+  .copy-hint { font-size: 10px; color: var(--muted); margin-top: 6px; font-family: 'JetBrains Mono', monospace; }
   .copy-hint.copied { color: var(--success); }
-
-  .viewer-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: 16px;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 12px;
-    color: var(--muted);
-  }
-
+  .viewer-badge { display: inline-flex; align-items: center; gap: 6px; margin-top: 16px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted); }
   .viewer-badge.connected { color: var(--success); }
-
-  /* ── INPUT ────────────────────────────────── */
   .input-group { position: relative; margin-bottom: 16px; }
-
   input {
-    width: 100%;
-    padding: 14px 16px;
-    background: rgba(0,0,0,0.4);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    color: var(--text);
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 16px;
-    letter-spacing: 3px;
-    text-transform: uppercase;
-    text-align: center;
-    outline: none;
-    transition: border-color 0.2s, box-shadow 0.2s;
+    width: 100%; padding: 14px 16px; background: rgba(0,0,0,0.4); border: 1px solid var(--border);
+    border-radius: 10px; color: var(--text); font-family: 'JetBrains Mono', monospace;
+    font-size: 16px; letter-spacing: 3px; text-transform: uppercase; text-align: center;
+    outline: none; transition: border-color 0.2s, box-shadow 0.2s;
   }
-
-  input::placeholder {
-    letter-spacing: 1px;
-    color: var(--muted);
-    text-transform: none;
-    font-size: 13px;
-  }
-
-  input:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(0,229,255,0.08);
-  }
-
-  /* ── DIVIDER ──────────────────────────────── */
-  .divider {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin: 24px 0;
-    color: var(--muted);
-    font-size: 11px;
-    font-family: 'JetBrains Mono', monospace;
-  }
-
-  .divider::before, .divider::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: var(--border);
-  }
-
-  /* ── RECEIVER VIDEO ───────────────────────── */
-  #receiverVideo {
-    position: fixed;
-    inset: 0;
-    width: 100vw;
-    height: 100vh;
-    object-fit: contain;
-    background: #000;
-    display: none;
-    z-index: 100;
-  }
-
-  /* ── TV INSTRUCTIONS ──────────────────────── */
-  .instructions {
-    margin-top: 28px;
-    padding: 20px;
-    border-radius: 10px;
-    background: rgba(0,0,0,0.3);
-    border: 1px solid var(--border);
-  }
-
-  .instructions-title {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 10px;
-    color: var(--muted);
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    margin-bottom: 12px;
-  }
-
-  .step {
-    display: flex;
-    gap: 12px;
-    margin-bottom: 10px;
-    font-size: 13px;
-    color: var(--text);
-    line-height: 1.5;
-    align-items: flex-start;
-  }
-
+  input::placeholder { letter-spacing: 1px; color: var(--muted); text-transform: none; font-size: 13px; }
+  input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,229,255,0.08); }
+  .divider { display: flex; align-items: center; gap: 12px; margin: 24px 0; color: var(--muted); font-size: 11px; font-family: 'JetBrains Mono', monospace; }
+  .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+  #receiverVideo { position: fixed; inset: 0; width: 100vw; height: 100vh; object-fit: contain; background: #000; display: none; z-index: 100; }
+  .instructions { margin-top: 28px; padding: 20px; border-radius: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); }
+  .instructions-title { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 12px; }
+  .step { display: flex; gap: 12px; margin-bottom: 10px; font-size: 13px; color: var(--text); line-height: 1.5; align-items: flex-start; }
   .step:last-child { margin-bottom: 0; }
-
-  .step-num {
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px;
-    color: var(--accent2);
-    background: rgba(123,47,255,0.15);
-    border-radius: 4px;
-    padding: 1px 7px;
-    flex-shrink: 0;
-    margin-top: 1px;
-  }
-
-  /* ── MODE TOGGLE ──────────────────────────── */
-  .mode-toggle {
-    margin-top: 20px;
-    text-align: center;
-    font-size: 13px;
-    color: var(--muted);
-  }
-
-  .mode-toggle a {
-    color: var(--accent);
-    text-decoration: none;
-    cursor: pointer;
-  }
-
+  .step-num { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent2); background: rgba(123,47,255,0.15); border-radius: 4px; padding: 1px 7px; flex-shrink: 0; margin-top: 1px; }
+  .mode-toggle { margin-top: 20px; text-align: center; font-size: 13px; color: var(--muted); }
+  .mode-toggle a { color: var(--accent); text-decoration: none; cursor: pointer; }
   .mode-toggle a:hover { text-decoration: underline; }
-
-  /* ── SHARING INDICATOR ────────────────────── */
-  .sharing-indicator {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 20px;
-    font-size: 13px;
-    color: var(--success);
-  }
-
-  .rec-dot {
-    width: 10px; height: 10px;
-    background: var(--error);
-    border-radius: 50%;
-    animation: pulse 1.2s infinite;
-    box-shadow: 0 0 8px var(--error);
-  }
-
-  /* ── STOP BTN ─────────────────────────────── */
-  .btn-stop {
-    background: rgba(255,68,102,0.1);
-    border: 1px solid rgba(255,68,102,0.3);
-    color: var(--error);
-    margin-top: 10px;
-  }
-
-  .btn-stop:hover {
-    background: rgba(255,68,102,0.2);
-    border-color: var(--error);
-  }
-
+  .sharing-indicator { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; font-size: 13px; color: var(--success); }
+  .rec-dot { width: 10px; height: 10px; background: var(--error); border-radius: 50%; animation: pulse 1.2s infinite; box-shadow: 0 0 8px var(--error); }
+  .btn-stop { background: rgba(255,68,102,0.1); border: 1px solid rgba(255,68,102,0.3); color: var(--error); margin-top: 10px; }
+  .btn-stop:hover { background: rgba(255,68,102,0.2); border-color: var(--error); }
 </style>
 </head>
 <body>
-
 <video id="receiverVideo" autoplay playsinline></video>
 <div id="app"></div>
 
 <script>
-// Global error trap — shows errors on TV instead of silent black screen
+// ═══════════════════════════════════════════════════════════
+//  STEP 1: Paste your Firebase Realtime Database URL below
+//  Looks like: https://YOUR-PROJECT-default-rtdb.firebaseio.com
+// ═══════════════════════════════════════════════════════════
+var FIREBASE_URL = 'https://screenbeam-2f810-default-rtdb.europe-west1.firebasedatabase.app/';
+// ═══════════════════════════════════════════════════════════
+
+// Polyfill WebRTC prefixes for old TV browsers
+var RTC = window.RTCPeerConnection || window.webkitRTCPeerConnection || window.mozRTCPeerConnection;
+var SDESC = window.RTCSessionDescription || window.webkitRTCSessionDescription;
+var ICEC  = window.RTCIceCandidate    || window.webkitRTCIceCandidate;
+
+var ICE_CONFIG = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302'  },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'turn:openrelay.metered.ca:80',   username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turn:openrelay.metered.ca:443',  username: 'openrelayproject', credential: 'openrelayproject' },
+    { urls: 'turns:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
+  ]
+};
+
+// Global error trap
 window.onerror = function(msg, src, line) {
   var app = document.getElementById('app');
   if (app && app.innerHTML.length < 10) {
-    app.innerHTML = '<div style="color:#ff4466;font-family:monospace;padding:40px;max-width:600px">'
-      + '<div style="font-size:20px;margin-bottom:12px">ScreenBeam JS Error</div>'
-      + '<div style="font-size:13px;opacity:0.8">' + msg + '</div>'
-      + '<div style="font-size:11px;opacity:0.5;margin-top:8px">Line ' + line + ' — refresh page to retry</div>'
+    app.innerHTML = '<div style="color:#ff4466;font-family:monospace;padding:40px;max-width:90vw">'
+      + '<div style="font-size:18px;margin-bottom:10px">ScreenBeam Error</div>'
+      + '<div style="font-size:13px">' + msg + '</div>'
+      + '<div style="font-size:11px;opacity:0.5;margin-top:6px">Line ' + line + '</div>'
       + '</div>';
   }
 };
 
-// PeerJS config — used by both sender and receiver
-// FIX: explicit secure:true + port:443 so TV browsers don't try wrong ports
-// FIX: added TURN servers so connection works even through strict TV NAT/firewall
-var PEER_CFG = {
-  host: '0.peerjs.com',
-  port: 443,
-  secure: true,
-  path: '/',
-  pingInterval: 5000,
-  config: {
-    iceServers: [
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:global.stun.twilio.com:3478' },
-      // Free TURN servers — essential for TV NAT traversal
-      { urls: 'turn:openrelay.metered.ca:80',   username: 'openrelayproject', credential: 'openrelayproject' },
-      { urls: 'turn:openrelay.metered.ca:443',  username: 'openrelayproject', credential: 'openrelayproject' },
-      { urls: 'turns:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
-    ]
-  }
-};
-
-// FIX: helper to create a valid fake stream — canvas.captureStream() fails on many TV browsers.
-// new MediaStream() alone has no tracks which breaks PeerJS offers.
-// This builds a proper 1-track stream so the SDP offer is valid.
-function makeFakeStream() {
-  try {
-    var canvas = document.createElement('canvas');
-    canvas.width = 2; canvas.height = 2;
-    // Draw something so the track is "live"
-    var ctx = canvas.getContext('2d');
-    if (ctx) ctx.fillRect(0,0,2,2);
-    if (canvas.captureStream) {
-      var s = canvas.captureStream(1);
-      if (s && s.getVideoTracks().length > 0) return s;
-    }
-  } catch(e) {}
-  // Last resort: empty MediaStream (works on newer PeerJS but may fail on old TV browsers)
-  try { return new MediaStream(); } catch(e2) {}
-  return null;
+// ─── FIREBASE REST HELPERS ────────────────────────────────
+// Pure XHR — no WebSocket, no SDK. Works on any TV browser.
+function fbGet(path, cb) {
+  var x = new XMLHttpRequest();
+  x.open('GET', FIREBASE_URL + path + '.json', true);
+  x.onload  = function() {
+    try { cb(null, JSON.parse(x.responseText)); }
+    catch(e) { cb(null, null); }
+  };
+  x.onerror = function() { cb(new Error('network'), null); };
+  x.send();
+}
+function fbPut(path, data, cb) {
+  var x = new XMLHttpRequest();
+  x.open('PUT', FIREBASE_URL + path + '.json', true);
+  x.setRequestHeader('Content-Type', 'application/json');
+  x.onload  = function() { if (cb) cb(null); };
+  x.onerror = function() { if (cb) cb(new Error('network')); };
+  x.send(JSON.stringify(data));
+}
+function fbPost(path, data, cb) {
+  var x = new XMLHttpRequest();
+  x.open('POST', FIREBASE_URL + path + '.json', true);
+  x.setRequestHeader('Content-Type', 'application/json');
+  x.onload  = function() { if (cb) cb(null); };
+  x.onerror = function() { if (cb) cb(new Error('network')); };
+  x.send(JSON.stringify(data));
+}
+function fbDelete(path) {
+  var x = new XMLHttpRequest();
+  x.open('DELETE', FIREBASE_URL + path + '.json', true);
+  x.send();
 }
 
-// Hash-based routing: screenbeam.vercel.app/#ROOMCODE
+// ─── ROUTING ─────────────────────────────────────────────
 var hashCode = location.hash.slice(1).toUpperCase().trim();
 var isRecv   = hashCode.length > 0;
 var roomArg  = hashCode;
 
-isRecv ? renderReceiver() : renderSender();
+// Check Firebase URL is configured
+if (FIREBASE_URL.indexOf('YOUR-PROJECT') !== -1) {
+  document.getElementById('app').innerHTML =
+    '<div style="color:#ff4466;font-family:JetBrains Mono,monospace;padding:40px;max-width:500px;text-align:center">' +
+    '<div style="font-size:20px;margin-bottom:16px;color:#00e5ff">ScreenBeam</div>' +
+    '<div style="font-size:13px;line-height:1.8">Firebase not configured yet.<br>' +
+    'Open index.html and replace<br>' +
+    '<span style="color:#7b2fff">YOUR-PROJECT-default-rtdb</span><br>' +
+    'with your Firebase project ID.</div></div>';
+} else {
+  isRecv ? renderReceiver() : renderSender();
+}
 
-/* ═══════════════════════════════
-   SENDER
-═══════════════════════════════ */
+// ═══════════════════════════════
+//  SENDER
+// ═══════════════════════════════
+var activePc     = null;
+var activeStream = null;
+var activeRoomId = null;
+var senderTimers = [];
+
 function renderSender() {
   var app = document.getElementById('app');
   app.innerHTML =
@@ -495,126 +230,178 @@ function renderSender() {
         '<div class="status-dot waiting"></div>' +
         '<span>Ready to cast</span>' +
       '</div>' +
-      '<button class="btn btn-primary" id="startBtn" onclick="startSharing()">▶ &nbsp; Share My Screen</button>' +
+      '<button class="btn btn-primary" id="startBtn" onclick="startSharing()">&#9654; &nbsp; Share My Screen</button>' +
       '<div id="shareControls" style="display:none">' +
-        '<div class="sharing-indicator">' +
-          '<div class="rec-dot"></div>' +
-          '<span>Sharing — stream is live</span>' +
-        '</div>' +
+        '<div class="sharing-indicator"><div class="rec-dot"></div><span>Sharing — stream is live</span></div>' +
         '<div class="room-block" id="roomBlock"></div>' +
-        '<button class="btn btn-stop" onclick="stopSharing()">■ &nbsp; Stop Sharing</button>' +
+        '<button class="btn btn-stop" onclick="stopSharing()">&#9632; &nbsp; Stop Sharing</button>' +
       '</div>' +
       '<div class="divider">how to connect tv</div>' +
       '<div class="instructions">' +
         '<div class="instructions-title">How to connect TV</div>' +
-        '<div class="step"><span class="step-num">1</span><span>Click <strong>Share My Screen</strong> on this device — a short URL appears</span></div>' +
+        '<div class="step"><span class="step-num">1</span><span>Click <strong>Share My Screen</strong> on this device</span></div>' +
         '<div class="step"><span class="step-num">2</span><span>On TV browser, type: <code style="color:var(--accent);font-family:JetBrains Mono,monospace">screenbeam.vercel.app/#ROOMCODE</code></span></div>' +
-        '<div class="step"><span class="step-num">3</span><span>TV connects instantly — bookmark the base URL to save time next time</span></div>' +
+        '<div class="step"><span class="step-num">3</span><span>TV connects instantly via WebRTC</span></div>' +
       '</div>' +
       '<div class="mode-toggle">On the TV? <a onclick="switchToReceiver()">Switch to receiver mode</a></div>' +
     '</div>';
 }
 
-var activePeer   = null;
-var activeStream = null;
-
-async function startSharing() {
+function startSharing() {
   var btn = document.getElementById('startBtn');
   btn.disabled = true;
   btn.textContent = 'Requesting screen access…';
 
-  try {
-    activeStream = await navigator.mediaDevices.getDisplayMedia({
-      video: { frameRate: { ideal: 60, max: 60 }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-      audio: { echoCancellation: false, noiseSuppression: false, sampleRate: 48000 }
+  navigator.mediaDevices.getDisplayMedia({
+    video: { frameRate: { ideal: 60, max: 60 }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+    audio: { echoCancellation: false, noiseSuppression: false, sampleRate: 48000 }
+  }).then(function(stream) {
+    activeStream = stream;
+    activeStream.getVideoTracks()[0].onended = function() { stopSharing(); };
+
+    var roomId = 'SB' + Math.random().toString(36).substr(2,5).toUpperCase();
+    activeRoomId = roomId;
+
+    // Clean up any old room data first
+    fbDelete('/rooms/' + roomId);
+
+    setStatus('loading', 'Setting up connection…');
+
+    activePc = new RTC(ICE_CONFIG);
+
+    // Add all tracks to peer connection
+    activeStream.getTracks().forEach(function(track) {
+      activePc.addTrack(track, activeStream);
     });
-  } catch (e) {
+
+    // Collect ICE candidates and write to Firebase
+    activePc.onicecandidate = function(e) {
+      if (e.candidate) {
+        fbPost('/rooms/' + roomId + '/senderCandidates', e.candidate.toJSON());
+      }
+    };
+
+    // Watch connection state
+    activePc.onconnectionstatechange = function() {
+      var state = activePc.connectionState;
+      if (state === 'connected') {
+        setStatus('live', 'Streaming — connected');
+        updateViewerBadge(true);
+      } else if (state === 'disconnected' || state === 'failed') {
+        setStatus('live', 'Viewer disconnected — waiting');
+        updateViewerBadge(false);
+      }
+    };
+
+    // Create offer
+    activePc.createOffer().then(function(offer) {
+      return activePc.setLocalDescription(offer);
+    }).then(function() {
+      // Write offer to Firebase
+      fbPut('/rooms/' + roomId + '/offer', {
+        type: activePc.localDescription.type,
+        sdp:  activePc.localDescription.sdp
+      }, function() {
+        // Show UI
+        btn.style.display = 'none';
+        document.getElementById('shareControls').style.display = 'block';
+
+        var tvUrl = 'https://screenbeam.vercel.app/#' + roomId;
+        document.getElementById('roomBlock').innerHTML =
+          '<div class="room-label">Room code</div>' +
+          '<div class="room-code">' + roomId + '</div>' +
+          '<div class="room-label">Open this URL on your TV browser</div>' +
+          '<div class="room-url" id="tvUrlBox" onclick="copyUrl(\'' + tvUrl + '\')">' + tvUrl + '</div>' +
+          '<div class="copy-hint" id="copyHint">&#8593; tap to copy</div>' +
+          '<div class="viewer-badge" id="viewerBadge">' +
+            '<div class="status-dot waiting"></div>Waiting for TV to connect…' +
+          '</div>';
+
+        setStatus('live', 'Live — waiting for viewer');
+
+        // Poll for answer from TV
+        var answered = false;
+        var knownRecvKeys = {};
+        var answerTimer = setInterval(function() {
+          fbGet('/rooms/' + roomId + '/answer', function(err, data) {
+            if (data && data.sdp && !answered) {
+              answered = true;
+              activePc.setRemoteDescription(new SDESC(data)).catch(function(e) {
+                setStatus('error', 'SDP error: ' + e.message);
+              });
+            }
+          });
+          // Also poll for receiver ICE candidates
+          fbGet('/rooms/' + roomId + '/receiverCandidates', function(err, candidates) {
+            if (!candidates) return;
+            var keys = Object.keys(candidates);
+            for (var i = 0; i < keys.length; i++) {
+              if (!knownRecvKeys[keys[i]]) {
+                knownRecvKeys[keys[i]] = true;
+                try {
+                  activePc.addIceCandidate(new ICEC(candidates[keys[i]])).catch(function(){});
+                } catch(e) {}
+              }
+            }
+          });
+        }, 1000);
+        senderTimers.push(answerTimer);
+      });
+    }).catch(function(e) {
+      setStatus('error', 'Failed to create offer: ' + e.message);
+      btn.disabled = false;
+      btn.textContent = '&#9654;  Share My Screen';
+    });
+
+  }).catch(function(e) {
     btn.disabled = false;
-    btn.textContent = '▶  Share My Screen';
+    btn.textContent = '&#9654;  Share My Screen';
     setStatus('error', 'Screen access denied — try again');
-    return;
-  }
-
-  activeStream.getVideoTracks()[0].onended = function() { stopSharing(); };
-
-  var roomId = 'SB' + Math.random().toString(36).substr(2,5).toUpperCase();
-  setStatus('loading', 'Initialising peer connection…');
-
-  activePeer = new Peer(roomId, PEER_CFG);
-
-  var viewers = 0;
-
-  activePeer.on('open', function() {
-    btn.style.display = 'none';
-    document.getElementById('shareControls').style.display = 'block';
-
-    var tvUrl = 'https://screenbeam.vercel.app/#' + roomId;
-
-    document.getElementById('roomBlock').innerHTML =
-      '<div class="room-label">Room code</div>' +
-      '<div class="room-code" id="theCode">' + roomId + '</div>' +
-      '<div class="room-label">Open this URL on your TV browser</div>' +
-      '<div class="room-url" id="tvUrlBox" onclick="copyUrl(this, \'' + tvUrl + '\')">' + tvUrl + '</div>' +
-      '<div class="copy-hint" id="copyHint">↑ tap to copy</div>' +
-      '<div class="viewer-badge" id="viewerBadge">' +
-        '<div class="status-dot waiting"></div>' +
-        'Waiting for TV to connect…' +
-      '</div>';
-
-    setStatus('live', 'Live — waiting for viewer');
   });
-
-  activePeer.on('call', function(call) {
-    call.answer(activeStream);
-    viewers++;
-    updateViewers(viewers);
-    setStatus('live', 'Streaming to ' + viewers + ' device' + (viewers>1?'s':''));
-
-    call.on('close',  function() { viewers = Math.max(0, viewers-1); updateViewers(viewers); if (viewers === 0) setStatus('live', 'Live — waiting for viewer'); });
-    call.on('error',  function() { viewers = Math.max(0, viewers-1); updateViewers(viewers); });
-  });
-
-  activePeer.on('error', function(err) {
-    if (err.type === 'unavailable-id') { startSharing(); return; }
-    setStatus('error', 'Peer error: ' + err.type);
-  });
-}
-
-function updateViewers(n) {
-  var badge = document.getElementById('viewerBadge');
-  if (!badge) return;
-  if (n === 0) {
-    badge.className = 'viewer-badge';
-    badge.innerHTML = '<div class="status-dot waiting"></div>Waiting for TV to connect…';
-  } else {
-    badge.className = 'viewer-badge connected';
-    badge.innerHTML = '<div class="status-dot live"></div>' + n + ' device' + (n>1?'s':'') + ' connected';
-  }
 }
 
 function stopSharing() {
-  if (activeStream) { activeStream.getTracks().forEach(function(t) { t.stop(); }); }
-  if (activePeer) { try { activePeer.destroy(); } catch(e) {} }
-  activePeer = null; activeStream = null;
+  // Clear all polling timers
+  for (var i = 0; i < senderTimers.length; i++) { clearInterval(senderTimers[i]); }
+  senderTimers = [];
+  // Stop media tracks
+  if (activeStream) { activeStream.getTracks().forEach(function(t) { t.stop(); }); activeStream = null; }
+  // Close peer connection
+  if (activePc) { try { activePc.close(); } catch(e) {} activePc = null; }
+  // Delete room from Firebase
+  if (activeRoomId) { fbDelete('/rooms/' + activeRoomId); activeRoomId = null; }
   renderSender();
   setStatus('waiting', 'Sharing stopped');
 }
 
-function copyUrl(el, url) {
-  navigator.clipboard.writeText(url).then(function() {
-    var hint = document.getElementById('copyHint');
-    if (!hint) return;
-    hint.textContent = '✓ Copied!';
-    hint.classList.add('copied');
-    setTimeout(function() { hint.textContent = '↑ tap to copy'; hint.classList.remove('copied'); }, 2000);
-  });
+function updateViewerBadge(connected) {
+  var badge = document.getElementById('viewerBadge');
+  if (!badge) return;
+  if (connected) {
+    badge.className = 'viewer-badge connected';
+    badge.innerHTML = '<div class="status-dot live"></div>TV connected';
+  } else {
+    badge.className = 'viewer-badge';
+    badge.innerHTML = '<div class="status-dot waiting"></div>Waiting for TV to connect…';
+  }
+}
+
+function copyUrl(url) {
+  try {
+    navigator.clipboard.writeText(url).then(function() {
+      var hint = document.getElementById('copyHint');
+      if (!hint) return;
+      hint.textContent = '✓ Copied!';
+      hint.className = 'copy-hint copied';
+      setTimeout(function() { hint.textContent = '↑ tap to copy'; hint.className = 'copy-hint'; }, 2000);
+    });
+  } catch(e) {}
 }
 
 function setStatus(type, msg) {
   var bar = document.getElementById('senderStatus');
   if (!bar) return;
-  var dot = bar.querySelector('.status-dot');
-  dot.className = 'status-dot ' + type;
+  bar.querySelector('.status-dot').className = 'status-dot ' + type;
   bar.querySelector('span').textContent = msg;
 }
 
@@ -623,9 +410,12 @@ function switchToReceiver() {
   if (r) { location.hash = r.trim().toUpperCase(); location.reload(); }
 }
 
-/* ═══════════════════════════════
-   RECEIVER
-═══════════════════════════════ */
+// ═══════════════════════════════
+//  RECEIVER (TV side)
+// ═══════════════════════════════
+var recvPc     = null;
+var recvTimers = [];
+
 function renderReceiver() {
   var app = document.getElementById('app');
   app.innerHTML =
@@ -634,171 +424,193 @@ function renderReceiver() {
       '<div class="subtitle">Receiver Mode · TV / Display</div>' +
       '<div class="status-bar" id="recvStatus">' +
         '<div class="status-dot waiting"></div>' +
-        '<span>' + (roomArg ? 'Connecting to ' + roomArg + '…' : 'Enter room code to connect') + '</span>' +
+        '<span>' + (roomArg ? 'Connecting to ' + roomArg + '...' : 'Enter room code') + '</span>' +
       '</div>' +
       '<div class="input-group">' +
         '<input type="text" id="codeInput" placeholder="Enter Room Code" maxlength="10"' +
         ' value="' + roomArg + '" oninput="this.value=this.value.toUpperCase()">' +
       '</div>' +
       '<button class="btn btn-primary" id="connectBtn" onclick="connectReceiver()">' +
-        '⟶ &nbsp; Connect to Stream' +
+        '&#10230; &nbsp; Connect to Stream' +
       '</button>' +
       '<div class="mode-toggle" style="margin-top:20px">' +
         'On the PC/phone? <a href="/" onclick="location.hash=\'\';location.href=\'/\';return false;">Switch to sender</a>' +
       '</div>' +
     '</div>';
 
-  if (roomArg) {
-    setTimeout(connectReceiver, 600);
-  }
+  if (roomArg) { setTimeout(connectReceiver, 800); }
 }
 
-var recvPeer = null;
-var retryTimeout = null;
-var openTimeout = null;   // FIX: timeout if signaling server unreachable
-var streamTimeout = null; // FIX: timeout if call made but no stream arrives
-
 function connectReceiver() {
+  // Stop any previous attempt
+  for (var i = 0; i < recvTimers.length; i++) { clearInterval(recvTimers[i]); clearTimeout(recvTimers[i]); }
+  recvTimers = [];
+  if (recvPc) { try { recvPc.close(); } catch(e) {} recvPc = null; }
+
   var codeInput = document.getElementById('codeInput');
   var roomId = ((codeInput ? codeInput.value : '') || roomArg).trim().toUpperCase();
   if (!roomId) { recvSetStatus('error', 'Enter a room code'); return; }
 
   var btn = document.getElementById('connectBtn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Connecting…'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Connecting...'; }
 
-  // Clear any pending timers
-  if (retryTimeout)  { clearTimeout(retryTimeout);  retryTimeout  = null; }
-  if (openTimeout)   { clearTimeout(openTimeout);   openTimeout   = null; }
-  if (streamTimeout) { clearTimeout(streamTimeout); streamTimeout = null; }
-  if (recvPeer) { try { recvPeer.destroy(); } catch(_){} recvPeer = null; }
+  recvSetStatus('loading', 'Checking Firebase...');
 
-  recvSetStatus('loading', 'Connecting to relay server…');
+  // Step 1: Poll Firebase for the sender's offer
+  var attempts = 0;
+  var maxAttempts = 60; // wait up to 60 seconds for sender to go live
+  var knownSenderKeys = {};
+  var sdpSet = false;
+  var answering = false;
 
-  recvPeer = new Peer(undefined, PEER_CFG); // FIX: use shared config with TURN + explicit port 443
-
-  // FIX: if PeerJS signaling server doesn't respond in 10s, show clear error instead of hanging forever
-  openTimeout = setTimeout(function() {
-    openTimeout = null;
-    if (!recvPeer) return;
-    recvSetStatus('error', 'Relay server unreachable — check TV internet connection, then retry');
-    if (btn) { btn.disabled = false; btn.textContent = '⟶  Retry'; }
-    try { recvPeer.destroy(); } catch(e) {}
-    recvPeer = null;
-  }, 10000);
-
-  recvPeer.on('open', function() {
-    clearTimeout(openTimeout); openTimeout = null;
-    recvSetStatus('loading', 'Relay connected — calling sender…');
-
-    // FIX: use makeFakeStream() helper that reliably creates a valid stream on TV browsers
-    var fakeStream = makeFakeStream();
-
-    var call = recvPeer.call(roomId, fakeStream);
-
-    if (!call) {
-      recvSetStatus('error', 'Could not reach sender — is the room code correct?');
-      if (btn) { btn.disabled = false; btn.textContent = '⟶  Connect to Stream'; }
+  var offerTimer = setInterval(function() {
+    attempts++;
+    if (attempts > maxAttempts) {
+      clearInterval(offerTimer);
+      recvSetStatus('error', 'Sender not found — is the room code correct?');
+      if (btn) { btn.disabled = false; btn.textContent = '⟶  Retry'; }
       return;
     }
+    recvSetStatus('loading', 'Waiting for sender (' + attempts + 's)...');
 
-    recvSetStatus('loading', 'Reaching sender — waiting for stream…');
-
-    // FIX: if stream doesn't arrive within 15s after calling, retry automatically
-    streamTimeout = setTimeout(function() {
-      streamTimeout = null;
-      recvSetStatus('loading', 'Sender slow to respond — retrying…');
-      retryTimeout = setTimeout(function() { connectReceiver(); }, 1000);
-    }, 15000);
-
-    call.on('stream', function(stream) {
-      clearTimeout(streamTimeout); streamTimeout = null;
-      clearTimeout(retryTimeout);  retryTimeout  = null;
-
-      var vid = document.getElementById('receiverVideo');
-      vid.srcObject = stream;
-      vid.muted = true;
-      vid.style.display = 'block';
-
-      vid.play().then(function() {
-        vid.muted = false;
-      }).catch(function() {
-        recvSetStatus('loading', 'Tap anywhere to start playback');
-        function handleTap() {
-          vid.muted = false;
-          vid.play().catch(function() {});
-          document.removeEventListener('click', handleTap);
-        }
-        document.addEventListener('click', handleTap);
-      });
-
-      // Try fullscreen — wrapped for TV browser compatibility
-      var go = vid.requestFullscreen || vid.webkitRequestFullscreen || vid.mozRequestFullScreen || vid.msRequestFullscreen;
-      if (go) { try { go.call(vid); } catch(e) {} }
-
-      document.getElementById('app').style.display = 'none';
-      document.body.style.overflow = 'hidden';
-      document.body.style.background = '#000';
-
-      // FIX: also watch for track ending — so TV updates when sender stops sharing
-      // (some TV browsers don't fire call 'close' reliably)
-      var tracks = stream.getTracks();
-      for (var i = 0; i < tracks.length; i++) {
-        tracks[i].onended = function() {
-          var v = document.getElementById('receiverVideo');
-          if (v) v.style.display = 'none';
-          document.getElementById('app').style.display = 'flex';
-          document.body.style.background = '';
-          renderReceiver();
-          recvSetStatus('error', 'Stream ended — sender stopped sharing');
-        };
+    fbGet('/rooms/' + roomId + '/offer', function(err, offer) {
+      if (err) {
+        recvSetStatus('error', 'Firebase error — check internet connection');
+        clearInterval(offerTimer);
+        if (btn) { btn.disabled = false; btn.textContent = '⟶  Retry'; }
+        return;
       }
+      if (!offer || !offer.sdp || sdpSet || answering) return;
 
-      vid.onclick = function() {
-        var fs = document.fullscreenElement || document.webkitFullscreenElement;
-        if (fs) {
-          var ex = document.exitFullscreen || document.webkitExitFullscreen;
-          if (ex) { try { ex.call(document); } catch(e) {} }
-        } else {
-          vid.style.display = 'none';
-          document.getElementById('app').style.display = 'flex';
-          document.body.style.background = '';
-          renderReceiver();
+      answering = true;
+      clearInterval(offerTimer);
+      recvSetStatus('loading', 'Sender found — connecting...');
+
+      // Step 2: Create peer connection
+      recvPc = new RTC(ICE_CONFIG);
+
+      // Step 3: Handle incoming video stream
+      recvPc.ontrack = function(e) {
+        if (!e.streams || !e.streams[0]) return;
+        var stream = e.streams[0];
+        var vid = document.getElementById('receiverVideo');
+        vid.srcObject = stream;
+        vid.muted = true;
+        vid.style.display = 'block';
+
+        vid.play().then(function() {
+          vid.muted = false;
+        }).catch(function() {
+          recvSetStatus('loading', 'Tap screen to start playback');
+          function handleTap() {
+            vid.muted = false;
+            vid.play().catch(function(){});
+            document.removeEventListener('click', handleTap);
+          }
+          document.addEventListener('click', handleTap);
+        });
+
+        // Fullscreen
+        var go = vid.requestFullscreen || vid.webkitRequestFullscreen || vid.mozRequestFullScreen || vid.msRequestFullscreen;
+        if (go) { try { go.call(vid); } catch(e) {} }
+
+        document.getElementById('app').style.display = 'none';
+        document.body.style.background = '#000';
+
+        // Track ended = sender stopped sharing
+        var tracks = stream.getTracks();
+        for (var t = 0; t < tracks.length; t++) {
+          tracks[t].onended = function() {
+            vid.style.display = 'none';
+            document.getElementById('app').style.display = 'flex';
+            document.body.style.background = '';
+            renderReceiver();
+            recvSetStatus('error', 'Stream ended — sender stopped sharing');
+          };
+        }
+
+        vid.onclick = function() {
+          var fs = document.fullscreenElement || document.webkitFullscreenElement;
+          if (fs) {
+            var ex = document.exitFullscreen || document.webkitExitFullscreen;
+            if (ex) { try { ex.call(document); } catch(e2) {} }
+          } else {
+            vid.style.display = 'none';
+            document.getElementById('app').style.display = 'flex';
+            document.body.style.background = '';
+            renderReceiver();
+          }
+        };
+
+        recvSetStatus('live', 'Streaming');
+      };
+
+      // Collect ICE candidates and write to Firebase
+      recvPc.onicecandidate = function(e) {
+        if (e.candidate) {
+          fbPost('/rooms/' + roomId + '/receiverCandidates', e.candidate.toJSON());
         }
       };
-    });
 
-    call.on('error', function(e) {
-      clearTimeout(streamTimeout); streamTimeout = null;
-      recvSetStatus('error', 'Call error: ' + (e.message || e));
-      if (btn) { btn.disabled = false; btn.textContent = '⟶  Retry'; }
-    });
+      recvPc.onconnectionstatechange = function() {
+        var state = recvPc ? recvPc.connectionState : '';
+        if (state === 'failed') {
+          recvSetStatus('error', 'Connection failed — tap Retry');
+          if (btn) { btn.disabled = false; btn.textContent = '⟶  Retry'; }
+        }
+      };
 
-    call.on('close', function() {
-      clearTimeout(streamTimeout); streamTimeout = null;
-      var v = document.getElementById('receiverVideo');
-      if (v) v.style.display = 'none';
-      document.getElementById('app').style.display = 'flex';
-      document.body.style.background = '';
-      renderReceiver();
-      recvSetStatus('error', 'Stream ended — sender disconnected');
-    });
-  });
+      // Step 4: Set remote description (sender's offer) and create answer
+      recvPc.setRemoteDescription(new SDESC(offer)).then(function() {
+        sdpSet = true;
+        return recvPc.createAnswer();
+      }).then(function(answer) {
+        return recvPc.setLocalDescription(answer);
+      }).then(function() {
+        // Step 5: Write answer to Firebase so sender can pick it up
+        fbPut('/rooms/' + roomId + '/answer', {
+          type: recvPc.localDescription.type,
+          sdp:  recvPc.localDescription.sdp
+        });
 
-  recvPeer.on('error', function(err) {
-    clearTimeout(openTimeout); openTimeout = null;
-    clearTimeout(streamTimeout); streamTimeout = null;
-    if (err.type === 'peer-unavailable') {
-      // Sender not ready yet — auto retry every 3 seconds
-      recvSetStatus('loading', 'Sender not live yet — retrying in 3s…');
-      retryTimeout = setTimeout(function() { connectReceiver(); }, 3000);
-    } else if (err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error') {
-      recvSetStatus('error', 'Network error (' + err.type + ') — check connection & retry');
-      if (btn) { btn.disabled = false; btn.textContent = '⟶  Retry'; }
-    } else {
-      recvSetStatus('error', 'Error: ' + err.type + ' — tap Retry');
-      if (btn) { btn.disabled = false; btn.textContent = '⟶  Retry'; }
-    }
-  });
+        recvSetStatus('loading', 'Answer sent — establishing stream...');
+
+        // Step 6: Poll for sender ICE candidates
+        var candidateTimer = setInterval(function() {
+          fbGet('/rooms/' + roomId + '/senderCandidates', function(err2, candidates) {
+            if (!candidates || !recvPc) return;
+            var keys = Object.keys(candidates);
+            for (var k = 0; k < keys.length; k++) {
+              if (!knownSenderKeys[keys[k]]) {
+                knownSenderKeys[keys[k]] = true;
+                try {
+                  recvPc.addIceCandidate(new ICEC(candidates[keys[k]])).catch(function(){});
+                } catch(e3) {}
+              }
+            }
+          });
+        }, 1000);
+        recvTimers.push(candidateTimer);
+
+        // Stop candidate polling once connected
+        var watchTimer = setInterval(function() {
+          if (!recvPc) { clearInterval(watchTimer); return; }
+          var state = recvPc.connectionState || recvPc.iceConnectionState;
+          if (state === 'connected') {
+            clearInterval(watchTimer);
+            clearInterval(candidateTimer);
+          }
+        }, 1000);
+        recvTimers.push(watchTimer);
+
+      }).catch(function(e) {
+        recvSetStatus('error', 'WebRTC error: ' + e.message);
+        if (btn) { btn.disabled = false; btn.textContent = '⟶  Retry'; }
+      });
+    });
+  }, 1000);
+
+  recvTimers.push(offerTimer);
 }
 
 function recvSetStatus(type, msg) {
