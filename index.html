@@ -213,12 +213,107 @@ if (FIREBASE_URL.indexOf('YOUR-PROJECT') !== -1) {
 }
 
 // ═══════════════════════════════
+//  SHARED HELPERS
+// ═══════════════════════════════
+
+// Wait for ICE gathering to finish, then hand back the complete local description.
+// All candidates are embedded in the SDP — zero separate polling needed.
+function waitForICE(pc, callback) {
+  if (pc.iceGatheringState === 'complete') { callback(pc.localDescription); return; }
+  var done = false;
+  var timer = setTimeout(function() { // safety: give up after 6s and use whatever we have
+    if (!done) { done = true; callback(pc.localDescription); }
+  }, 6000);
+  pc.onicegatheringstatechange = function() {
+    if (pc.iceGatheringState === 'complete' && !done) {
+      done = true; clearTimeout(timer); callback(pc.localDescription);
+    }
+  };
+}
+
+// Prefer H264 (hardware-accelerated on most devices) over VP8/VP9
+function preferH264(sdp) {
+  var match = sdp.match(/a=rtpmap:(\d+) H264\/90000/);
+  if (!match) return sdp;
+  var pt = match[1];
+  return sdp.replace(/(m=video \d+ \S+ )([\d ]+)/, function(_, prefix, pts) {
+    var list = pts.trim().split(' ').filter(function(p) { return p !== pt; });
+    return prefix + pt + ' ' + list.join(' ');
+  });
+}
+
+// Full SDP sanitizer: strip TV-breaking lines, prefer H264, uncap bitrate
+function sanitizeSDP(sdp) {
+  var lines = sdp.split('\r\n');
+  var out = []; var inVideo = false;
+  for (var i = 0; i < lines.length; i++) {
+    var l = lines[i];
+    if (l === 'a=extmap-allow-mixed') continue; // kills old TV browsers
+    if (l.indexOf('m=video') === 0) { inVideo = true; }
+    else if (l.indexOf('m=') === 0) { inVideo = false; }
+    if (inVideo && (l.indexOf('b=AS:') === 0 || l.indexOf('b=TIAS:') === 0)) continue;
+    out.push(l);
+    if (l.indexOf('m=video') === 0) { out.push('b=AS:8000'); out.push('b=TIAS:8000000'); }
+  }
+  return preferH264(out.join('\r\n'));
+}
+
+// Push 8Mbps + 60fps to encoder after connection
+function boostSenderBitrate(pc) {
+  try {
+    var senders = pc.getSenders();
+    for (var i = 0; i < senders.length; i++) {
+      var s = senders[i];
+      if (!s.track || s.track.kind !== 'video') continue;
+      var p = s.getParameters();
+      if (!p.encodings) p.encodings = [{}];
+      for (var j = 0; j < p.encodings.length; j++) {
+        p.encodings[j].maxBitrate = 8000000;
+        p.encodings[j].maxFramerate = 60;
+        p.encodings[j].priority = 'high';
+        p.encodings[j].networkPriority = 'high';
+      }
+      s.setParameters(p).catch(function(){});
+    }
+  } catch(e) {}
+}
+
+// Play video stream — handles srcObject AND old TV browser createObjectURL fallback
+function playStream(vid, stream) {
+  var set = false;
+  // Modern API
+  if ('srcObject' in vid) {
+    try { vid.srcObject = stream; set = true; } catch(e) {}
+  }
+  // Old TV browser fallback
+  if (!set) {
+    try { vid.src = URL.createObjectURL(stream); } catch(e2) {
+      recvSetStatus('error', 'Video API not supported on this browser');
+      return;
+    }
+  }
+  vid.muted = true;
+  vid.style.display = 'block';
+  document.getElementById('app').style.display = 'none';
+  document.body.style.background = '#000';
+
+  // Fullscreen before play — TV browsers respond better this way
+  var go = vid.requestFullscreen || vid.webkitRequestFullscreen || vid.mozRequestFullScreen || vid.msRequestFullscreen;
+  if (go) { try { go.call(vid); } catch(e) {} }
+
+  vid.play().then(function() {
+    try { vid.muted = false; } catch(e) {}
+  }).catch(function() {
+    recvSetStatus('loading', 'Tap screen to start playback');
+    function tap() { vid.play().catch(function(){}); try { vid.muted = false; } catch(e){} document.removeEventListener('click', tap); }
+    document.addEventListener('click', tap);
+  });
+}
+
+// ═══════════════════════════════
 //  SENDER
 // ═══════════════════════════════
-var activePc     = null;
-var activeStream = null;
-var activeRoomId = null;
-var senderTimers = [];
+var activePc = null; var activeStream = null; var activeRoomId = null; var senderTimers = [];
 
 function renderSender() {
   var app = document.getElementById('app');
@@ -226,10 +321,7 @@ function renderSender() {
     '<div class="card">' +
       '<div class="logo">ScreenBeam<span class="logo-dot"></span></div>' +
       '<div class="subtitle">Local Network · WebRTC · Zero Lag</div>' +
-      '<div class="status-bar" id="senderStatus">' +
-        '<div class="status-dot waiting"></div>' +
-        '<span>Ready to cast</span>' +
-      '</div>' +
+      '<div class="status-bar" id="senderStatus"><div class="status-dot waiting"></div><span>Ready to cast</span></div>' +
       '<button class="btn btn-primary" id="startBtn" onclick="startSharing()">&#9654; &nbsp; Share My Screen</button>' +
       '<div id="shareControls" style="display:none">' +
         '<div class="sharing-indicator"><div class="rec-dot"></div><span>Sharing — stream is live</span></div>' +
@@ -247,57 +339,9 @@ function renderSender() {
     '</div>';
 }
 
-// Strip SDP lines that older TV browsers can't parse,
-// and boost bitrate/latency settings for smooth screen sharing
-function stripExtmapMixed(sdp) {
-  var lines = sdp.split('\r\n');
-  var out = [];
-  var inVideo = false;
-  for (var i = 0; i < lines.length; i++) {
-    var line = lines[i];
-    // Drop the TV-breaking line
-    if (line === 'a=extmap-allow-mixed') continue;
-    // Track which section we're in
-    if (line.indexOf('m=video') === 0) { inVideo = true; }
-    else if (line.indexOf('m=') === 0) { inVideo = false; }
-    // Replace any existing bandwidth cap with a high one
-    if (inVideo && line.indexOf('b=AS:') === 0) continue;
-    if (inVideo && line.indexOf('b=TIAS:') === 0) continue;
-    out.push(line);
-    // Inject high-bitrate hints right after the video m= line
-    if (line.indexOf('m=video') === 0) {
-      out.push('b=AS:8000');      // 8 Mbps — removes Chrome's default low cap
-      out.push('b=TIAS:8000000'); // same in bps for stricter parsers
-    }
-  }
-  return out.join('\r\n');
-}
-
-// After RTCPeerConnection connects, push max bitrate directly to the encoder
-// This overrides codec defaults for truly smooth 60fps screen sharing
-function boostSenderBitrate(pc) {
-  try {
-    var senders = pc.getSenders();
-    for (var i = 0; i < senders.length; i++) {
-      var sender = senders[i];
-      if (!sender.track || sender.track.kind !== 'video') continue;
-      var params = sender.getParameters();
-      if (!params.encodings) params.encodings = [{}];
-      for (var j = 0; j < params.encodings.length; j++) {
-        params.encodings[j].maxBitrate    = 8000000; // 8 Mbps
-        params.encodings[j].maxFramerate  = 60;
-        params.encodings[j].networkPriority = 'high';
-        params.encodings[j].priority       = 'high';
-      }
-      sender.setParameters(params).catch(function(){});
-    }
-  } catch(e) {}
-}
-
 function startSharing() {
   var btn = document.getElementById('startBtn');
-  btn.disabled = true;
-  btn.textContent = 'Requesting screen access…';
+  btn.disabled = true; btn.textContent = 'Requesting screen access…';
 
   navigator.mediaDevices.getDisplayMedia({
     video: { frameRate: { ideal: 60, max: 60 }, width: { ideal: 1920 }, height: { ideal: 1080 } },
@@ -306,154 +350,101 @@ function startSharing() {
     activeStream = stream;
     activeStream.getVideoTracks()[0].onended = function() { stopSharing(); };
 
-    // Only unambiguous characters — no O/0, I/1, S/5, Z/2 lookalikes
     var SAFE = 'ACDEFGHJKLMNPQRTUVWXY3478';
     var roomId = 'SB';
     for (var ci = 0; ci < 5; ci++) { roomId += SAFE[Math.floor(Math.random() * SAFE.length)]; }
     activeRoomId = roomId;
-
-    // Clean up any old room data first
     fbDelete('/rooms/' + roomId);
-
-    setStatus('loading', 'Setting up connection…');
+    setStatus('loading', 'Gathering network paths…');
 
     activePc = new RTC(ICE_CONFIG);
+    activeStream.getTracks().forEach(function(t) { activePc.addTrack(t, activeStream); });
 
-    // Add all tracks to peer connection
-    activeStream.getTracks().forEach(function(track) {
-      activePc.addTrack(track, activeStream);
-    });
-
-    // Collect ICE candidates and write to Firebase
-    activePc.onicecandidate = function(e) {
-      if (e.candidate) {
-        fbPost('/rooms/' + roomId + '/senderCandidates', e.candidate.toJSON());
-      }
-    };
-
-    // Watch connection state
     activePc.onconnectionstatechange = function() {
-      var state = activePc.connectionState;
-      if (state === 'connected') {
-        setStatus('live', 'Streaming — connected');
-        updateViewerBadge(true);
-        boostSenderBitrate(activePc); // push max bitrate to encoder
-      } else if (state === 'disconnected' || state === 'failed') {
-        setStatus('live', 'Viewer disconnected — waiting');
-        updateViewerBadge(false);
-      }
+      var st = activePc.connectionState;
+      if (st === 'connected')    { setStatus('live', 'Streaming'); updateViewerBadge(true);  boostSenderBitrate(activePc); }
+      if (st === 'disconnected' || st === 'failed') { setStatus('live', 'Viewer disconnected — waiting'); updateViewerBadge(false); }
     };
 
-    // Create offer
-    activePc.createOffer().then(function(offer) {
-      return activePc.setLocalDescription(offer);
+    // Create offer then WAIT for ICE gathering to complete before uploading
+    activePc.createOffer().then(function(o) {
+      return activePc.setLocalDescription(o);
     }).then(function() {
-      // Write offer to Firebase — strip a=extmap-allow-mixed which breaks older TV browsers
-      fbPut('/rooms/' + roomId + '/offer', {
-        type: activePc.localDescription.type,
-        sdp:  stripExtmapMixed(activePc.localDescription.sdp)
-      }, function() {
-        // Show UI
-        btn.style.display = 'none';
-        document.getElementById('shareControls').style.display = 'block';
+      setStatus('loading', 'Finding best path… (takes ~2s)');
+      waitForICE(activePc, function(localDesc) {
+        // Upload the COMPLETE offer — all ICE candidates already embedded
+        fbPut('/rooms/' + roomId + '/offer', {
+          type: localDesc.type,
+          sdp:  sanitizeSDP(localDesc.sdp)
+        }, function() {
+          btn.style.display = 'none';
+          document.getElementById('shareControls').style.display = 'block';
+          var tvUrl = 'https://screenbeam.vercel.app/#' + roomId;
+          document.getElementById('roomBlock').innerHTML =
+            '<div class="room-label">Room code</div>' +
+            '<div class="room-code">' + roomId + '</div>' +
+            '<div class="room-label">Open this URL on your TV browser</div>' +
+            '<div class="room-url" id="tvUrlBox" onclick="copyUrl(\'' + tvUrl + '\')">' + tvUrl + '</div>' +
+            '<div class="copy-hint" id="copyHint">&#8593; tap to copy</div>' +
+            '<div class="viewer-badge" id="viewerBadge"><div class="status-dot waiting"></div>Waiting for TV to connect…</div>';
+          setStatus('live', 'Live — waiting for viewer');
 
-        var tvUrl = 'https://screenbeam.vercel.app/#' + roomId;
-        document.getElementById('roomBlock').innerHTML =
-          '<div class="room-label">Room code</div>' +
-          '<div class="room-code">' + roomId + '</div>' +
-          '<div class="room-label">Open this URL on your TV browser</div>' +
-          '<div class="room-url" id="tvUrlBox" onclick="copyUrl(\'' + tvUrl + '\')">' + tvUrl + '</div>' +
-          '<div class="copy-hint" id="copyHint">&#8593; tap to copy</div>' +
-          '<div class="viewer-badge" id="viewerBadge">' +
-            '<div class="status-dot waiting"></div>Waiting for TV to connect…' +
-          '</div>';
-
-        setStatus('live', 'Live — waiting for viewer');
-
-        // Poll for answer from TV
-        var answered = false;
-        var knownRecvKeys = {};
-        var answerTimer = setInterval(function() {
-          fbGet('/rooms/' + roomId + '/answer', function(err, data) {
-            if (data && data.sdp && !answered) {
-              answered = true;
-              activePc.setRemoteDescription(new SDESC(data)).catch(function(e) {
-                setStatus('error', 'SDP error: ' + e.message);
-              });
-            }
-          });
-          // Also poll for receiver ICE candidates
-          fbGet('/rooms/' + roomId + '/receiverCandidates', function(err, candidates) {
-            if (!candidates) return;
-            var keys = Object.keys(candidates);
-            for (var i = 0; i < keys.length; i++) {
-              if (!knownRecvKeys[keys[i]]) {
-                knownRecvKeys[keys[i]] = true;
-                try {
-                  activePc.addIceCandidate(new ICEC(candidates[keys[i]])).catch(function(){});
-                } catch(e) {}
+          // Poll only for the answer — no separate candidate exchange needed
+          var answered = false;
+          var t = setInterval(function() {
+            fbGet('/rooms/' + roomId + '/answer', function(err, data) {
+              if (data && data.sdp && !answered) {
+                answered = true;
+                clearInterval(t);
+                activePc.setRemoteDescription(new SDESC(data)).catch(function(e) {
+                  setStatus('error', 'Answer SDP error: ' + e.message);
+                });
               }
-            }
-          });
-        }, 300);
-        senderTimers.push(answerTimer);
+            });
+          }, 300);
+          senderTimers.push(t);
+        });
       });
     }).catch(function(e) {
-      setStatus('error', 'Failed to create offer: ' + e.message);
-      btn.disabled = false;
-      btn.textContent = '&#9654;  Share My Screen';
+      setStatus('error', 'Offer failed: ' + e.message);
+      btn.disabled = false; btn.textContent = '&#9654; Share My Screen';
     });
 
-  }).catch(function(e) {
-    btn.disabled = false;
-    btn.textContent = '&#9654;  Share My Screen';
+  }).catch(function() {
+    btn.disabled = false; btn.textContent = '&#9654; Share My Screen';
     setStatus('error', 'Screen access denied — try again');
   });
 }
 
 function stopSharing() {
-  // Clear all polling timers
-  for (var i = 0; i < senderTimers.length; i++) { clearInterval(senderTimers[i]); }
+  for (var i = 0; i < senderTimers.length; i++) clearInterval(senderTimers[i]);
   senderTimers = [];
-  // Stop media tracks
   if (activeStream) { activeStream.getTracks().forEach(function(t) { t.stop(); }); activeStream = null; }
-  // Close peer connection
   if (activePc) { try { activePc.close(); } catch(e) {} activePc = null; }
-  // Delete room from Firebase
   if (activeRoomId) { fbDelete('/rooms/' + activeRoomId); activeRoomId = null; }
-  renderSender();
-  setStatus('waiting', 'Sharing stopped');
+  renderSender(); setStatus('waiting', 'Sharing stopped');
 }
 
 function updateViewerBadge(connected) {
-  var badge = document.getElementById('viewerBadge');
-  if (!badge) return;
-  if (connected) {
-    badge.className = 'viewer-badge connected';
-    badge.innerHTML = '<div class="status-dot live"></div>TV connected';
-  } else {
-    badge.className = 'viewer-badge';
-    badge.innerHTML = '<div class="status-dot waiting"></div>Waiting for TV to connect…';
-  }
+  var b = document.getElementById('viewerBadge'); if (!b) return;
+  b.className = 'viewer-badge' + (connected ? ' connected' : '');
+  b.innerHTML = connected
+    ? '<div class="status-dot live"></div>TV connected'
+    : '<div class="status-dot waiting"></div>Waiting for TV to connect…';
 }
 
 function copyUrl(url) {
-  try {
-    navigator.clipboard.writeText(url).then(function() {
-      var hint = document.getElementById('copyHint');
-      if (!hint) return;
-      hint.textContent = '✓ Copied!';
-      hint.className = 'copy-hint copied';
-      setTimeout(function() { hint.textContent = '↑ tap to copy'; hint.className = 'copy-hint'; }, 2000);
-    });
-  } catch(e) {}
+  try { navigator.clipboard.writeText(url).then(function() {
+    var h = document.getElementById('copyHint'); if (!h) return;
+    h.textContent = '✓ Copied!'; h.className = 'copy-hint copied';
+    setTimeout(function() { h.textContent = '↑ tap to copy'; h.className = 'copy-hint'; }, 2000);
+  }); } catch(e) {}
 }
 
 function setStatus(type, msg) {
-  var bar = document.getElementById('senderStatus');
-  if (!bar) return;
-  bar.querySelector('.status-dot').className = 'status-dot ' + type;
-  bar.querySelector('span').textContent = msg;
+  var b = document.getElementById('senderStatus'); if (!b) return;
+  b.querySelector('.status-dot').className = 'status-dot ' + type;
+  b.querySelector('span').textContent = msg;
 }
 
 function switchToReceiver() {
@@ -464,8 +455,7 @@ function switchToReceiver() {
 // ═══════════════════════════════
 //  RECEIVER (TV side)
 // ═══════════════════════════════
-var recvPc     = null;
-var recvTimers = [];
+var recvPc = null; var recvTimers = [];
 
 function renderReceiver() {
   var app = document.getElementById('app');
@@ -473,27 +463,21 @@ function renderReceiver() {
     '<div class="card">' +
       '<div class="logo">ScreenBeam<span class="logo-dot"></span></div>' +
       '<div class="subtitle">Receiver Mode · TV / Display</div>' +
-      '<div class="status-bar" id="recvStatus">' +
-        '<div class="status-dot waiting"></div>' +
-        '<span>' + (roomArg ? 'Connecting to ' + roomArg + '...' : 'Enter room code') + '</span>' +
-      '</div>' +
+      '<div class="status-bar" id="recvStatus"><div class="status-dot waiting"></div>' +
+        '<span>' + (roomArg ? 'Connecting to ' + roomArg + '...' : 'Enter room code') + '</span></div>' +
       '<div class="input-group">' +
         '<input type="text" id="codeInput" placeholder="Enter Room Code" maxlength="10"' +
         ' value="' + roomArg + '" oninput="this.value=this.value.toUpperCase()">' +
       '</div>' +
-      '<button class="btn btn-primary" id="connectBtn" onclick="connectReceiver()">' +
-        '&#10230; &nbsp; Connect to Stream' +
-      '</button>' +
-      '<div class="mode-toggle" style="margin-top:20px">' +
-        'On the PC/phone? <a href="/" onclick="location.hash=\'\';location.href=\'/\';return false;">Switch to sender</a>' +
+      '<button class="btn btn-primary" id="connectBtn" onclick="connectReceiver()">&#10230; &nbsp; Connect to Stream</button>' +
+      '<div class="mode-toggle" style="margin-top:20px">On the PC/phone? ' +
+        '<a href="/" onclick="location.hash=\'\';location.href=\'/\';return false;">Switch to sender</a>' +
       '</div>' +
     '</div>';
-
-  if (roomArg) { setTimeout(connectReceiver, 800); }
+  if (roomArg) { setTimeout(connectReceiver, 600); }
 }
 
 function connectReceiver() {
-  // Stop any previous attempt
   for (var i = 0; i < recvTimers.length; i++) { clearInterval(recvTimers[i]); clearTimeout(recvTimers[i]); }
   recvTimers = [];
   if (recvPc) { try { recvPc.close(); } catch(e) {} recvPc = null; }
@@ -504,71 +488,45 @@ function connectReceiver() {
 
   var btn = document.getElementById('connectBtn');
   if (btn) { btn.disabled = true; btn.textContent = 'Connecting...'; }
+  recvSetStatus('loading', 'Looking for sender...');
 
-  recvSetStatus('loading', 'Checking Firebase...');
+  var attempts = 0; var answering = false;
 
-  // Step 1: Poll Firebase for the sender's offer
-  var attempts = 0;
-  var maxAttempts = 60; // wait up to 60 seconds for sender to go live
-  var knownSenderKeys = {};
-  var sdpSet = false;
-  var answering = false;
-
+  // Poll for the sender's complete offer (already has all candidates embedded)
   var offerTimer = setInterval(function() {
     attempts++;
-    if (attempts > maxAttempts) {
+    if (attempts > 60) {
       clearInterval(offerTimer);
-      recvSetStatus('error', 'Sender not found — is the room code correct?');
-      if (btn) { btn.disabled = false; btn.textContent = '⟶  Retry'; }
+      recvSetStatus('error', 'Sender not found — check room code');
+      if (btn) { btn.disabled = false; btn.textContent = '&#10230;  Retry'; }
       return;
     }
-    recvSetStatus('loading', 'Waiting for sender (' + attempts + 's)...');
+    if (attempts > 3) recvSetStatus('loading', 'Waiting for sender... (' + attempts + 's)');
 
     fbGet('/rooms/' + roomId + '/offer', function(err, offer) {
       if (err) {
-        recvSetStatus('error', 'Firebase error — check internet connection');
         clearInterval(offerTimer);
-        if (btn) { btn.disabled = false; btn.textContent = '⟶  Retry'; }
+        recvSetStatus('error', 'Firebase error — check internet');
+        if (btn) { btn.disabled = false; btn.textContent = '&#10230;  Retry'; }
         return;
       }
-      if (!offer || !offer.sdp || sdpSet || answering) return;
-
+      if (!offer || !offer.sdp || answering) return;
       answering = true;
       clearInterval(offerTimer);
       recvSetStatus('loading', 'Sender found — connecting...');
 
-      // Step 2: Create peer connection
       recvPc = new RTC(ICE_CONFIG);
 
-      // Step 3: Handle incoming video stream
+      // Handle incoming stream
       recvPc.ontrack = function(e) {
         if (!e.streams || !e.streams[0]) return;
         var stream = e.streams[0];
         var vid = document.getElementById('receiverVideo');
-        vid.srcObject = stream;
-        vid.muted = true;
-        vid.style.display = 'block';
 
-        vid.play().then(function() {
-          vid.muted = false;
-        }).catch(function() {
-          recvSetStatus('loading', 'Tap screen to start playback');
-          function handleTap() {
-            vid.muted = false;
-            vid.play().catch(function(){});
-            document.removeEventListener('click', handleTap);
-          }
-          document.addEventListener('click', handleTap);
-        });
+        // Play with srcObject + createObjectURL fallback for old TV browsers
+        playStream(vid, stream);
 
-        // Fullscreen
-        var go = vid.requestFullscreen || vid.webkitRequestFullscreen || vid.mozRequestFullScreen || vid.msRequestFullscreen;
-        if (go) { try { go.call(vid); } catch(e) {} }
-
-        document.getElementById('app').style.display = 'none';
-        document.body.style.background = '#000';
-
-        // Track ended = sender stopped sharing
+        // When sender stops, go back to connect screen
         var tracks = stream.getTracks();
         for (var t = 0; t < tracks.length; t++) {
           tracks[t].onended = function() {
@@ -579,84 +537,40 @@ function connectReceiver() {
             recvSetStatus('error', 'Stream ended — sender stopped sharing');
           };
         }
-
         vid.onclick = function() {
           var fs = document.fullscreenElement || document.webkitFullscreenElement;
-          if (fs) {
-            var ex = document.exitFullscreen || document.webkitExitFullscreen;
-            if (ex) { try { ex.call(document); } catch(e2) {} }
-          } else {
-            vid.style.display = 'none';
-            document.getElementById('app').style.display = 'flex';
-            document.body.style.background = '';
-            renderReceiver();
-          }
+          var ex = fs ? (document.exitFullscreen || document.webkitExitFullscreen) : null;
+          if (ex) { try { ex.call(document); } catch(e2) {} }
+          else { vid.style.display='none'; document.getElementById('app').style.display='flex'; document.body.style.background=''; renderReceiver(); }
         };
-
-        recvSetStatus('live', 'Streaming');
-      };
-
-      // Collect ICE candidates and write to Firebase
-      recvPc.onicecandidate = function(e) {
-        if (e.candidate) {
-          fbPost('/rooms/' + roomId + '/receiverCandidates', e.candidate.toJSON());
-        }
       };
 
       recvPc.onconnectionstatechange = function() {
-        var state = recvPc ? recvPc.connectionState : '';
-        if (state === 'failed') {
+        var st = recvPc ? (recvPc.connectionState || recvPc.iceConnectionState) : '';
+        if (st === 'failed') {
           recvSetStatus('error', 'Connection failed — tap Retry');
-          if (btn) { btn.disabled = false; btn.textContent = '⟶  Retry'; }
+          if (btn) { btn.disabled = false; btn.textContent = '&#10230;  Retry'; }
         }
       };
 
-      // Step 4: Set remote description (sender's offer) and create answer
+      // Set offer, create answer, wait for ICE, then upload complete answer
       recvPc.setRemoteDescription(new SDESC(offer)).then(function() {
-        sdpSet = true;
         return recvPc.createAnswer();
-      }).then(function(answer) {
-        return recvPc.setLocalDescription(answer);
+      }).then(function(ans) {
+        return recvPc.setLocalDescription(ans);
       }).then(function() {
-        // Step 5: Write answer to Firebase so sender can pick it up
-        fbPut('/rooms/' + roomId + '/answer', {
-          type: recvPc.localDescription.type,
-          sdp:  recvPc.localDescription.sdp
-        });
-
-        recvSetStatus('loading', 'Answer sent — establishing stream...');
-
-        // Step 6: Poll for sender ICE candidates
-        var candidateTimer = setInterval(function() {
-          fbGet('/rooms/' + roomId + '/senderCandidates', function(err2, candidates) {
-            if (!candidates || !recvPc) return;
-            var keys = Object.keys(candidates);
-            for (var k = 0; k < keys.length; k++) {
-              if (!knownSenderKeys[keys[k]]) {
-                knownSenderKeys[keys[k]] = true;
-                try {
-                  recvPc.addIceCandidate(new ICEC(candidates[keys[k]])).catch(function(){});
-                } catch(e3) {}
-              }
-            }
+        recvSetStatus('loading', 'Gathering paths...');
+        waitForICE(recvPc, function(localDesc) {
+          // Upload complete answer — all candidates embedded, no separate polling
+          fbPut('/rooms/' + roomId + '/answer', {
+            type: localDesc.type,
+            sdp:  localDesc.sdp
           });
-        }, 300);
-        recvTimers.push(candidateTimer);
-
-        // Stop candidate polling once connected
-        var watchTimer = setInterval(function() {
-          if (!recvPc) { clearInterval(watchTimer); return; }
-          var state = recvPc.connectionState || recvPc.iceConnectionState;
-          if (state === 'connected') {
-            clearInterval(watchTimer);
-            clearInterval(candidateTimer);
-          }
-        }, 300);
-        recvTimers.push(watchTimer);
-
+          recvSetStatus('loading', 'Connecting stream...');
+        });
       }).catch(function(e) {
         recvSetStatus('error', 'WebRTC error: ' + e.message);
-        if (btn) { btn.disabled = false; btn.textContent = '⟶  Retry'; }
+        if (btn) { btn.disabled = false; btn.textContent = '&#10230;  Retry'; }
       });
     });
   }, 1000);
@@ -665,10 +579,9 @@ function connectReceiver() {
 }
 
 function recvSetStatus(type, msg) {
-  var bar = document.getElementById('recvStatus');
-  if (!bar) return;
-  bar.querySelector('.status-dot').className = 'status-dot ' + type;
-  bar.querySelector('span').textContent = msg;
+  var b = document.getElementById('recvStatus'); if (!b) return;
+  b.querySelector('.status-dot').className = 'status-dot ' + type;
+  b.querySelector('span').textContent = msg;
 }
 </script>
 </body>
