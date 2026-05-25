@@ -144,7 +144,6 @@ var ICE_CONFIG = {
   rtcpMuxPolicy: 'require'
 };
 
-// Detect mobile (no getDisplayMedia support)
 var isMobile = /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent)
   || !navigator.mediaDevices
   || typeof navigator.mediaDevices.getDisplayMedia !== 'function';
@@ -160,7 +159,6 @@ window.onerror = function(msg, src, line) {
   }
 };
 
-// ─── FIREBASE REST HELPERS ────────────────────────────────
 function fbGet(path, cb) {
   var x = new XMLHttpRequest();
   x.open('GET', FIREBASE_URL + path + '.json', true);
@@ -182,19 +180,11 @@ function fbDelete(path) {
   x.send();
 }
 
-// ─── ROUTING ─────────────────────────────────────────────
 var hashCode = location.hash.slice(1).toUpperCase().trim();
 var isRecv   = hashCode.length > 0;
 var roomArg  = hashCode;
 
-if (FIREBASE_URL.indexOf('YOUR-PROJECT') !== -1) {
-  document.getElementById('app').innerHTML =
-    '<div style="color:#ff4466;font-family:JetBrains Mono,monospace;padding:40px;max-width:500px;text-align:center">' +
-    '<div style="font-size:20px;margin-bottom:16px;color:#00e5ff">ScreenBeam</div>' +
-    '<div style="font-size:13px;line-height:1.8">Firebase not configured.</div></div>';
-} else {
-  isRecv ? renderReceiver() : renderSender();
-}
+isRecv ? renderReceiver() : renderSender();
 
 // ═══════════════════════════════
 //  SHARED HELPERS
@@ -281,6 +271,37 @@ function playStream(vid, stream) {
 }
 
 // ═══════════════════════════════
+//  MOBILE CAMERA — cascading fallbacks
+//  Try 4 configs from most to least specific.
+//  Resolves with the stream from whichever works first.
+// ═══════════════════════════════
+function getMobileStream() {
+  var attempts = [
+    // 1. Rear camera + audio, ideal res
+    { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: true },
+    // 2. Any camera + audio (no facingMode constraint)
+    { video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: true },
+    // 3. Any camera, no audio (mic permission not required)
+    { video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+    // 4. Bare minimum — just video: true
+    { video: true, audio: false }
+  ];
+
+  function tryNext(i) {
+    if (i >= attempts.length) {
+      return Promise.reject(new Error('Camera unavailable — check browser permissions'));
+    }
+    return navigator.mediaDevices.getUserMedia(attempts[i]).catch(function(err) {
+      // Only keep trying on permission-type errors; stop on NotFoundError etc.
+      var keep = err && (err.name === 'NotAllowedError' || err.name === 'OverconstrainedError' || err.name === 'ConstraintNotSatisfiedError');
+      if (keep) return tryNext(i + 1);
+      return Promise.reject(err);
+    });
+  }
+  return tryNext(0);
+}
+
+// ═══════════════════════════════
 //  SENDER
 // ═══════════════════════════════
 var activePc = null; var activeStream = null; var activeRoomId = null; var senderTimers = [];
@@ -288,9 +309,8 @@ var activePc = null; var activeStream = null; var activeRoomId = null; var sende
 function renderSender() {
   var app = document.getElementById('app');
 
-  // Mobile note shown when on phone/tablet
   var mobileNote = isMobile
-    ? '<div class="mobile-note"><span>Mobile detected:</span> Screen share is not supported in mobile browsers. Your <span>front camera</span> will be used instead — best for casting from a phone to a TV.</div>'
+    ? '<div class="mobile-note"><span>Mobile detected:</span> Screen share is not supported in mobile browsers. Your <span>camera</span> will be used instead.</div>'
     : '';
 
   app.innerHTML =
@@ -321,28 +341,21 @@ function renderSender() {
 function startSharing() {
   var btn = document.getElementById('startBtn');
   btn.disabled = true;
-  btn.textContent = isMobile ? 'Requesting camera...' : 'Requesting screen access…';
+  btn.textContent = isMobile ? 'Starting camera…' : 'Requesting screen access…';
+  setStatus('loading', isMobile ? 'Waiting for camera…' : 'Requesting screen access…');
 
-  // Mobile: use camera. Desktop: use getDisplayMedia (screen share).
-  var streamPromise;
-  if (isMobile) {
-    streamPromise = navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } },
-      audio: { echoCancellation: false, noiseSuppression: false }
-    });
-  } else {
-    streamPromise = navigator.mediaDevices.getDisplayMedia({
-      video: { frameRate: { ideal: 30, max: 30 }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-      audio: { echoCancellation: false, noiseSuppression: false, sampleRate: 48000 }
-    });
-  }
+  var streamPromise = isMobile
+    ? getMobileStream()
+    : navigator.mediaDevices.getDisplayMedia({
+        video: { frameRate: { ideal: 30, max: 30 }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+        audio: { echoCancellation: false, noiseSuppression: false, sampleRate: 48000 }
+      });
 
   streamPromise.then(function(stream) {
     activeStream = stream;
     try { activeStream.getVideoTracks()[0].contentHint = 'motion'; } catch(e) {}
     activeStream.getVideoTracks()[0].onended = function() { stopSharing(); };
 
-    // 2-letter room code using unambiguous characters
     var SAFE = 'ACDEFGHJKLMNPQRTUVWXY3478';
     var roomId = '';
     for (var ci = 0; ci < 2; ci++) { roomId += SAFE[Math.floor(Math.random() * SAFE.length)]; }
@@ -397,19 +410,15 @@ function startSharing() {
       });
     }).catch(function(e) {
       setStatus('error', 'Offer failed: ' + e.message);
-      btn.disabled = false; btn.textContent = isMobile ? '&#128247; Share Camera' : '&#9654; Share My Screen';
+      btn.disabled = false;
+      btn.innerHTML = isMobile ? '&#128247; &nbsp; Share Camera' : '&#9654; &nbsp; Share My Screen';
     });
 
   }).catch(function(err) {
     btn.disabled = false;
     btn.innerHTML = isMobile ? '&#128247; &nbsp; Share Camera' : '&#9654; &nbsp; Share My Screen';
-    if (err && err.name === 'NotAllowedError') {
-      setStatus('error', isMobile ? 'Camera permission denied — check browser settings' : 'Screen access denied — try again');
-    } else if (err && err.name === 'NotFoundError') {
-      setStatus('error', 'No camera found on this device');
-    } else {
-      setStatus('error', 'Access denied — ' + (err ? err.message : 'unknown error'));
-    }
+    var msg = err ? (err.message || err.name || String(err)) : 'Unknown error';
+    setStatus('error', msg);
   });
 }
 
