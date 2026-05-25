@@ -255,7 +255,7 @@ function sanitizeSDP(sdp) {
     else if (l.indexOf('m=') === 0) { inVideo = false; }
     if (inVideo && (l.indexOf('b=AS:') === 0 || l.indexOf('b=TIAS:') === 0)) continue;
     out.push(l);
-    if (l.indexOf('m=video') === 0) { out.push('b=AS:8000'); out.push('b=TIAS:8000000'); }
+    if (l.indexOf('m=video') === 0) { out.push('b=AS:10000'); out.push('b=TIAS:10000000'); }
   }
   return preferH264(out.join('\r\n'));
 }
@@ -270,11 +270,11 @@ function boostSenderBitrate(pc) {
       var p = s.getParameters();
       if (!p.encodings) p.encodings = [{}];
       for (var j = 0; j < p.encodings.length; j++) {
-        p.encodings[j].maxBitrate = 5000000;
+        p.encodings[j].maxBitrate = 8000000;
         p.encodings[j].maxFramerate = 30;
         p.encodings[j].priority = 'high';
         p.encodings[j].networkPriority = 'high';
-        p.encodings[j].degradationPreference = 'maintain-framerate';
+        p.encodings[j].degradationPreference = 'balanced';
       }
       s.setParameters(p).catch(function(){});
     }
@@ -347,11 +347,10 @@ function startSharing() {
   btn.disabled = true; btn.textContent = 'Requesting screen access…';
 
   navigator.mediaDevices.getDisplayMedia({
-    video: { frameRate: { ideal: 30, max: 30 }, width: { ideal: 1280 }, height: { ideal: 720 } },
+    video: { frameRate: { ideal: 30, max: 30 }, width: { ideal: 1920 }, height: { ideal: 1080 } },
     audio: { echoCancellation: false, noiseSuppression: false, sampleRate: 48000 }
   }).then(function(stream) {
     activeStream = stream;
-    // 'motion' hint = encoder optimises for moving video not static text
     try { activeStream.getVideoTracks()[0].contentHint = 'motion'; } catch(e) {}
     activeStream.getVideoTracks()[0].onended = function() { stopSharing(); };
 
