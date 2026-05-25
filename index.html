@@ -144,9 +144,7 @@ var ICE_CONFIG = {
   rtcpMuxPolicy: 'require'
 };
 
-var isMobile = /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent)
-  || !navigator.mediaDevices
-  || typeof navigator.mediaDevices.getDisplayMedia !== 'function';
+var isMobile = !navigator.mediaDevices || typeof navigator.mediaDevices.getDisplayMedia !== 'function';
 
 window.onerror = function(msg, src, line) {
   var app = document.getElementById('app');
@@ -320,7 +318,7 @@ function renderSender() {
       '<div class="status-bar" id="senderStatus"><div class="status-dot waiting"></div><span>Ready to cast</span></div>' +
       mobileNote +
       '<button class="btn btn-primary" id="startBtn" style="margin-top:16px" onclick="startSharing()">' +
-        (isMobile ? '&#128247; &nbsp; Share Camera' : '&#9654; &nbsp; Share My Screen') +
+        '&#9654; &nbsp; Share My Screen'+
       '</button>' +
       '<div id="shareControls" style="display:none">' +
         '<div class="sharing-indicator"><div class="rec-dot"></div><span>Sharing — stream is live</span></div>' +
@@ -341,15 +339,21 @@ function renderSender() {
 function startSharing() {
   var btn = document.getElementById('startBtn');
   btn.disabled = true;
-  btn.textContent = isMobile ? 'Starting camera…' : 'Requesting screen access…';
-  setStatus('loading', isMobile ? 'Waiting for camera…' : 'Requesting screen access…');
+  btn.textContent = 'Requesting screen access…';
+  setStatus('loading', 'Requesting screen access…');
 
-  var streamPromise = isMobile
-    ? getMobileStream()
-    : navigator.mediaDevices.getDisplayMedia({
-        video: { frameRate: { ideal: 30, max: 30 }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-        audio: { echoCancellation: false, noiseSuppression: false, sampleRate: 48000 }
-      });
+  // Change the stream promise to strictly look for the screen first:
+  var streamPromise = navigator.mediaDevices.getDisplayMedia({
+    video: { frameRate: { ideal: 30, max: 30 }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+    audio: { echoCancellation: false, noiseSuppression: false, sampleRate: 48000 }
+  }).catch(function(err) {
+    // Fallback to camera ONLY if screen sharing fails/is unsupported and they are on a mobile device
+    if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+      setStatus('loading', 'Screen share unsupported. Trying camera…');
+      return getMobileStream();
+    }
+    throw err; // Otherwise, bubble up the error normally
+  });
 
   streamPromise.then(function(stream) {
     activeStream = stream;
