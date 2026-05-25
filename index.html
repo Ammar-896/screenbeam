@@ -118,8 +118,8 @@
   .rec-dot { width: 10px; height: 10px; background: var(--error); border-radius: 50%; animation: pulse 1.2s infinite; box-shadow: 0 0 8px var(--error); }
   .btn-stop { background: rgba(255,68,102,0.1); border: 1px solid rgba(255,68,102,0.3); color: var(--error); margin-top: 10px; }
   .btn-stop:hover { background: rgba(255,68,102,0.2); border-color: var(--error); }
-  .unsupported-note { margin-top: 12px; padding: 12px 16px; border-radius: 8px; background: rgba(255,68,102,0.08); border: 1px solid rgba(255,68,102,0.2); font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); line-height: 1.6; display: none; }
-  .unsupported-note span { color: var(--error); }
+  .info-note { margin-top: 12px; padding: 12px 16px; border-radius: 8px; background: rgba(0,229,255,0.05); border: 1px solid rgba(0,229,255,0.15); font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); line-height: 1.6; }
+  .info-note span { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -144,9 +144,14 @@ var ICE_CONFIG = {
   rtcpMuxPolicy: 'require'
 };
 
-// Screen share is supported if getDisplayMedia exists.
-// Android Chrome 94+ supports it — do NOT block based on userAgent.
-var canScreenShare = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia);
+// KEY FIX: Never block the button based on feature detection alone.
+// getDisplayMedia can exist but still fail on certain Android Chrome builds
+// depending on flags, Chrome version, or app context. Always let the user try.
+// We detect support but only use it for a soft hint, not a hard block.
+var hasGetDisplayMedia = !!(
+  navigator.mediaDevices &&
+  typeof navigator.mediaDevices.getDisplayMedia === 'function'
+);
 
 window.onerror = function(msg, src, line) {
   var app = document.getElementById('app');
@@ -278,8 +283,11 @@ var activePc = null; var activeStream = null; var activeRoomId = null; var sende
 function renderSender() {
   var app = document.getElementById('app');
 
-  var unsupportedNote = !canScreenShare
-    ? '<div class="unsupported-note" id="unsupportedNote" style="display:block"><span>Not supported:</span> Screen sharing requires Chrome on Android, or a desktop browser. Safari on iOS does not support screen capture.</div>'
+  // KEY FIX: Show a soft info note if getDisplayMedia is not detected,
+  // but still allow the button to be clicked. Some browsers report
+  // the API differently but still support it when triggered by user gesture.
+  var infoNote = !hasGetDisplayMedia
+    ? '<div class="info-note"><span>Tip:</span> If sharing fails, make sure you\'re using Chrome (not Samsung Internet or another browser). Open Chrome and paste: <strong>screenbeam.vercel.app</strong></div>'
     : '';
 
   app.innerHTML =
@@ -287,11 +295,8 @@ function renderSender() {
       '<div class="logo">ScreenBeam<span class="logo-dot"></span></div>' +
       '<div class="subtitle">Local Network &middot; WebRTC &middot; Zero Lag</div>' +
       '<div class="status-bar" id="senderStatus"><div class="status-dot waiting"></div><span>Ready to cast</span></div>' +
-      unsupportedNote +
-      '<button class="btn btn-primary" id="startBtn" style="margin-top:16px"' +
-        (canScreenShare ? '' : ' disabled') +
-        ' onclick="startSharing()">&#9654; &nbsp; Share My Screen' +
-      '</button>' +
+      '<button class="btn btn-primary" id="startBtn" style="margin-top:4px" onclick="startSharing()">&#9654; &nbsp; Share My Screen</button>' +
+      infoNote +
       '<div id="shareControls" style="display:none">' +
         '<div class="sharing-indicator"><div class="rec-dot"></div><span>Sharing — stream is live</span></div>' +
         '<div class="room-block" id="roomBlock"></div>' +
@@ -314,84 +319,123 @@ function startSharing() {
   btn.textContent = 'Requesting screen access…';
   setStatus('loading', 'Requesting screen access…');
 
-  navigator.mediaDevices.getDisplayMedia({
-    video: { frameRate: { ideal: 30, max: 30 }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-    audio: { echoCancellation: false, noiseSuppression: false, sampleRate: 48000 }
-  }).then(function(stream) {
-    activeStream = stream;
-    try { activeStream.getVideoTracks()[0].contentHint = 'motion'; } catch(e) {}
-    activeStream.getVideoTracks()[0].onended = function() { stopSharing(); };
+  // KEY FIX: Attempt to get getDisplayMedia from multiple locations.
+  // On some Android Chrome versions it may be on navigator.mediaDevices
+  // but not detected by our static check, or may need to be accessed fresh.
+  var gdm = null;
+  if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+    gdm = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
+  } else if (navigator.getDisplayMedia) {
+    // older Chrome / Firefox API location
+    gdm = navigator.getDisplayMedia.bind(navigator);
+  }
 
-    var SAFE = 'ACDEFGHJKLMNPQRTUVWXY3478';
-    var roomId = '';
-    for (var ci = 0; ci < 2; ci++) { roomId += SAFE[Math.floor(Math.random() * SAFE.length)]; }
-    activeRoomId = roomId;
-    fbDelete('/rooms/' + roomId);
-    setStatus('loading', 'Gathering network paths…');
-
-    activePc = new RTC(ICE_CONFIG);
-    activeStream.getTracks().forEach(function(t) { activePc.addTrack(t, activeStream); });
-
-    activePc.onconnectionstatechange = function() {
-      var st = activePc.connectionState;
-      if (st === 'connected')    { setStatus('live', 'Streaming'); updateViewerBadge(true);  boostSenderBitrate(activePc); }
-      if (st === 'disconnected' || st === 'failed') { setStatus('live', 'Viewer disconnected — waiting'); updateViewerBadge(false); }
-    };
-
-    activePc.createOffer().then(function(o) {
-      return activePc.setLocalDescription(o);
-    }).then(function() {
-      setStatus('loading', 'Finding best path… (takes ~2s)');
-      waitForICE(activePc, function(localDesc) {
-        fbPut('/rooms/' + roomId + '/offer', {
-          type: localDesc.type,
-          sdp:  sanitizeSDP(localDesc.sdp)
-        }, function() {
-          btn.style.display = 'none';
-          document.getElementById('shareControls').style.display = 'block';
-          var tvUrl = 'https://screenbeam.vercel.app/#' + roomId;
-          document.getElementById('roomBlock').innerHTML =
-            '<div class="room-label">Room code — enter on TV</div>' +
-            '<div class="room-code">' + roomId + '</div>' +
-            '<div class="room-label">Or open this URL directly</div>' +
-            '<div class="room-url" id="tvUrlBox" onclick="copyUrl(\'' + tvUrl + '\')">' + tvUrl + '</div>' +
-            '<div class="copy-hint" id="copyHint">&#8593; tap to copy</div>' +
-            '<div class="viewer-badge" id="viewerBadge"><div class="status-dot waiting"></div>Waiting for TV to connect…</div>';
-          setStatus('live', 'Live — waiting for viewer');
-
-          var answered = false;
-          var t = setInterval(function() {
-            fbGet('/rooms/' + roomId + '/answer', function(err, data) {
-              if (data && data.sdp && !answered) {
-                answered = true;
-                clearInterval(t);
-                activePc.setRemoteDescription(new SDESC(data)).catch(function(e) {
-                  setStatus('error', 'Answer SDP error: ' + e.message);
-                });
-              }
-            });
-          }, 300);
-          senderTimers.push(t);
-        });
-      });
-    }).catch(function(e) {
-      setStatus('error', 'Offer failed: ' + e.message);
-      btn.disabled = false;
-      btn.innerHTML = '&#9654; &nbsp; Share My Screen';
-    });
-
-  }).catch(function(err) {
+  if (!gdm) {
+    // Last resort: show a clear actionable error
     btn.disabled = false;
     btn.innerHTML = '&#9654; &nbsp; Share My Screen';
-    var msg = err ? (err.message || err.name || String(err)) : 'Unknown error';
-    // Give a friendlier message for the most common cases
-    if (err && err.name === 'NotAllowedError') {
-      msg = 'Permission denied — tap Share My Screen and allow screen capture';
-    } else if (err && (err.name === 'NotSupportedError' || err.name === 'TypeError')) {
-      msg = 'Screen sharing not supported — use Chrome on Android or a desktop browser';
-    }
-    setStatus('error', msg);
-  });
+    setStatus('error', 'Open this page in Chrome browser — tap the 3-dot menu → "Open in Chrome"');
+    return;
+  }
+
+  var constraints = {
+    video: { frameRate: { ideal: 30, max: 30 }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+    audio: { echoCancellation: false, noiseSuppression: false, sampleRate: 48000 }
+  };
+
+  // KEY FIX: Some Android versions reject audio in getDisplayMedia constraints.
+  // Try with audio first, fall back to video-only if it fails.
+  function tryShare(withAudio) {
+    var c = withAudio ? constraints : { video: constraints.video };
+    gdm(c).then(function(stream) {
+      activeStream = stream;
+      try { activeStream.getVideoTracks()[0].contentHint = 'motion'; } catch(e) {}
+      activeStream.getVideoTracks()[0].onended = function() { stopSharing(); };
+
+      var SAFE = 'ACDEFGHJKLMNPQRTUVWXY3478';
+      var roomId = '';
+      for (var ci = 0; ci < 2; ci++) { roomId += SAFE[Math.floor(Math.random() * SAFE.length)]; }
+      activeRoomId = roomId;
+      fbDelete('/rooms/' + roomId);
+      setStatus('loading', 'Gathering network paths…');
+
+      activePc = new RTC(ICE_CONFIG);
+      activeStream.getTracks().forEach(function(t) { activePc.addTrack(t, activeStream); });
+
+      activePc.onconnectionstatechange = function() {
+        var st = activePc.connectionState;
+        if (st === 'connected')    { setStatus('live', 'Streaming'); updateViewerBadge(true);  boostSenderBitrate(activePc); }
+        if (st === 'disconnected' || st === 'failed') { setStatus('live', 'Viewer disconnected — waiting'); updateViewerBadge(false); }
+      };
+
+      activePc.createOffer().then(function(o) {
+        return activePc.setLocalDescription(o);
+      }).then(function() {
+        setStatus('loading', 'Finding best path… (takes ~2s)');
+        waitForICE(activePc, function(localDesc) {
+          fbPut('/rooms/' + roomId + '/offer', {
+            type: localDesc.type,
+            sdp:  sanitizeSDP(localDesc.sdp)
+          }, function() {
+            btn.style.display = 'none';
+            document.getElementById('shareControls').style.display = 'block';
+            var tvUrl = 'https://screenbeam.vercel.app/#' + roomId;
+            document.getElementById('roomBlock').innerHTML =
+              '<div class="room-label">Room code — enter on TV</div>' +
+              '<div class="room-code">' + roomId + '</div>' +
+              '<div class="room-label">Or open this URL directly</div>' +
+              '<div class="room-url" id="tvUrlBox" onclick="copyUrl(\'' + tvUrl + '\')">' + tvUrl + '</div>' +
+              '<div class="copy-hint" id="copyHint">&#8593; tap to copy</div>' +
+              '<div class="viewer-badge" id="viewerBadge"><div class="status-dot waiting"></div>Waiting for TV to connect…</div>';
+            setStatus('live', 'Live — waiting for viewer');
+
+            var answered = false;
+            var t = setInterval(function() {
+              fbGet('/rooms/' + roomId + '/answer', function(err, data) {
+                if (data && data.sdp && !answered) {
+                  answered = true;
+                  clearInterval(t);
+                  activePc.setRemoteDescription(new SDESC(data)).catch(function(e) {
+                    setStatus('error', 'Answer SDP error: ' + e.message);
+                  });
+                }
+              });
+            }, 300);
+            senderTimers.push(t);
+          });
+        });
+      }).catch(function(e) {
+        setStatus('error', 'Offer failed: ' + e.message);
+        btn.disabled = false;
+        btn.innerHTML = '&#9654; &nbsp; Share My Screen';
+      });
+
+    }).catch(function(err) {
+      // KEY FIX: If audio caused the failure, retry without it
+      if (withAudio && err && (err.name === 'NotSupportedError' || err.name === 'TypeError' || err.name === 'OverconstrainedError')) {
+        setStatus('loading', 'Retrying without audio…');
+        tryShare(false);
+        return;
+      }
+
+      btn.disabled = false;
+      btn.innerHTML = '&#9654; &nbsp; Share My Screen';
+
+      var msg;
+      if (err && err.name === 'NotAllowedError') {
+        msg = 'Tap "Share My Screen" then allow — select a tab, window, or your screen';
+      } else if (err && (err.name === 'NotSupportedError' || err.name === 'TypeError')) {
+        msg = 'Open this page in Chrome — tap ⋮ → Open in Chrome';
+      } else if (err && err.name === 'InvalidStateError') {
+        msg = 'Please reload the page and try again';
+      } else {
+        msg = (err && (err.message || err.name)) ? (err.name + ': ' + err.message) : 'Unknown error — make sure you\'re using Chrome';
+      }
+      setStatus('error', msg);
+    });
+  }
+
+  tryShare(true);
 }
 
 function stopSharing() {
