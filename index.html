@@ -7,596 +7,449 @@
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg:       #050508;
-    --surface:  #0d0d14;
-    --border:   #1a1a2e;
-    --accent:   #00e5ff;
-    --accent2:  #7b2fff;
-    --glow:     rgba(0,229,255,0.15);
-    --text:     #e8e8f0;
-    --muted:    #555570;
-    --success:  #00ff9d;
-    --error:    #ff4466;
+    --bg:#050508;--surface:#0d0d14;--border:#1a1a2e;--accent:#00e5ff;--accent2:#7b2fff;
+    --text:#e8e8f0;--muted:#555570;--success:#00ff9d;--error:#ff4466;
   }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body {
-    background: var(--bg); color: var(--text);
-    font-family: 'Syne', sans-serif;
-    min-height: 100vh; display: flex;
-    align-items: center; justify-content: center;
-    overflow: hidden; position: relative;
-  }
-  body::before {
-    content: ''; position: fixed; inset: 0;
-    background:
-      radial-gradient(ellipse 60% 40% at 20% 50%, rgba(123,47,255,0.06) 0%, transparent 70%),
-      radial-gradient(ellipse 50% 35% at 80% 50%, rgba(0,229,255,0.05) 0%, transparent 70%);
-    pointer-events: none;
-  }
-  body::after {
-    content: ''; position: fixed; inset: 0;
-    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
-    pointer-events: none; z-index: 999;
-  }
-  .card {
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 16px; padding: 48px 40px; width: 460px; max-width: 95vw;
-    position: relative; box-shadow: 0 0 0 1px rgba(0,229,255,0.04), 0 32px 64px rgba(0,0,0,0.6);
-    animation: fadeUp 0.4s ease both;
-  }
-  @keyframes fadeUp { from { opacity:0; transform: translateY(16px); } to { opacity:1; transform: translateY(0); } }
-  .card::before {
-    content: ''; position: absolute; top: 0; left: 10%; right: 10%; height: 1px;
-    background: linear-gradient(90deg, transparent, var(--accent), var(--accent2), transparent);
-    border-radius: 50%;
-  }
-  .logo {
-    font-size: 28px; font-weight: 800; letter-spacing: -0.5px;
-    background: linear-gradient(135deg, var(--accent), var(--accent2));
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-    background-clip: text; margin-bottom: 4px;
-  }
-  .logo-dot {
-    display: inline-block; width: 8px; height: 8px; background: var(--accent);
-    border-radius: 50%; margin-left: 3px; vertical-align: middle;
-    box-shadow: 0 0 8px var(--accent); animation: pulse 2s ease-in-out infinite;
-  }
-  @keyframes pulse { 0%,100% { opacity:1; transform: scale(1); } 50% { opacity:0.5; transform: scale(0.8); } }
-  .subtitle {
-    font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted);
-    letter-spacing: 2px; text-transform: uppercase; margin-bottom: 36px;
-  }
-  .btn {
-    width: 100%; padding: 14px 20px; border-radius: 10px; border: none;
-    font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 700;
-    cursor: pointer; transition: all 0.2s ease; letter-spacing: 0.3px;
-  }
-  .btn-primary { background: linear-gradient(135deg, var(--accent2), #5500cc); color: #fff; box-shadow: 0 4px 20px rgba(123,47,255,0.3); }
-  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 28px rgba(123,47,255,0.45); }
-  .btn-primary:active { transform: translateY(0); }
-  .btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none !important; }
-  .status-bar {
-    display: flex; align-items: center; gap: 10px; padding: 12px 16px;
-    border-radius: 8px; background: rgba(0,0,0,0.3); border: 1px solid var(--border);
-    font-family: 'JetBrains Mono', monospace; font-size: 12px; margin-bottom: 20px;
-  }
-  .status-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .status-dot.waiting { background: var(--muted); }
-  .status-dot.live    { background: var(--success); box-shadow: 0 0 8px var(--success); animation: pulse 1.5s infinite; }
-  .status-dot.error   { background: var(--error); }
-  .status-dot.loading { background: var(--accent); animation: pulse 1s infinite; }
-  .room-block { margin-top: 28px; padding: 24px; border-radius: 12px; background: rgba(0,229,255,0.03); border: 1px solid rgba(0,229,255,0.12); }
-  .room-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; }
-  .room-code { font-family: 'JetBrains Mono', monospace; font-size: 48px; font-weight: 700; color: var(--accent); letter-spacing: 12px; text-shadow: 0 0 20px rgba(0,229,255,0.4); margin-bottom: 16px; word-break: break-all; }
-  .room-url { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text); background: rgba(0,0,0,0.4); border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; word-break: break-all; line-height: 1.5; cursor: pointer; transition: border-color 0.2s; }
-  .room-url:hover { border-color: var(--accent); }
-  .copy-hint { font-size: 10px; color: var(--muted); margin-top: 6px; font-family: 'JetBrains Mono', monospace; }
-  .copy-hint.copied { color: var(--success); }
-  .viewer-badge { display: inline-flex; align-items: center; gap: 6px; margin-top: 16px; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--muted); }
-  .viewer-badge.connected { color: var(--success); }
-  .input-group { position: relative; margin-bottom: 16px; }
-  input {
-    width: 100%; padding: 14px 16px; background: rgba(0,0,0,0.4); border: 1px solid var(--border);
-    border-radius: 10px; color: var(--text); font-family: 'JetBrains Mono', monospace;
-    font-size: 24px; letter-spacing: 8px; text-transform: uppercase; text-align: center;
-    outline: none; transition: border-color 0.2s, box-shadow 0.2s;
-  }
-  input::placeholder { letter-spacing: 1px; color: var(--muted); text-transform: none; font-size: 13px; }
-  input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(0,229,255,0.08); }
-  .divider { display: flex; align-items: center; gap: 12px; margin: 24px 0; color: var(--muted); font-size: 11px; font-family: 'JetBrains Mono', monospace; }
-  .divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
-  #receiverVideo { position: fixed; inset: 0; width: 100vw; height: 100vh; object-fit: contain; background: #000; display: none; z-index: 100; }
-  .instructions { margin-top: 28px; padding: 20px; border-radius: 10px; background: rgba(0,0,0,0.3); border: 1px solid var(--border); }
-  .instructions-title { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 12px; }
-  .step { display: flex; gap: 12px; margin-bottom: 10px; font-size: 13px; color: var(--text); line-height: 1.5; align-items: flex-start; }
-  .step:last-child { margin-bottom: 0; }
-  .step-num { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--accent2); background: rgba(123,47,255,0.15); border-radius: 4px; padding: 1px 7px; flex-shrink: 0; margin-top: 1px; }
-  .mode-toggle { margin-top: 20px; text-align: center; font-size: 13px; color: var(--muted); }
-  .mode-toggle a { color: var(--accent); text-decoration: none; cursor: pointer; }
-  .mode-toggle a:hover { text-decoration: underline; }
-  .sharing-indicator { display: flex; align-items: center; gap: 8px; margin-bottom: 20px; font-size: 13px; color: var(--success); }
-  .rec-dot { width: 10px; height: 10px; background: var(--error); border-radius: 50%; animation: pulse 1.2s infinite; box-shadow: 0 0 8px var(--error); }
-  .btn-stop { background: rgba(255,68,102,0.1); border: 1px solid rgba(255,68,102,0.3); color: var(--error); margin-top: 10px; }
-  .btn-stop:hover { background: rgba(255,68,102,0.2); border-color: var(--error); }
-  .info-note { margin-top: 12px; padding: 12px 16px; border-radius: 8px; background: rgba(0,229,255,0.05); border: 1px solid rgba(0,229,255,0.15); font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); line-height: 1.6; }
-  .info-note span { color: var(--accent); }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;min-height:100vh;
+    display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
+  body::before{content:'';position:fixed;inset:0;
+    background:radial-gradient(ellipse 60% 40% at 20% 50%,rgba(123,47,255,.06) 0%,transparent 70%),
+    radial-gradient(ellipse 50% 35% at 80% 50%,rgba(0,229,255,.05) 0%,transparent 70%);pointer-events:none}
+  body::after{content:'';position:fixed;inset:0;
+    background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.03) 2px,rgba(0,0,0,.03) 4px);
+    pointer-events:none;z-index:999}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:40px 32px;
+    width:460px;max-width:95vw;position:relative;
+    box-shadow:0 0 0 1px rgba(0,229,255,.04),0 32px 64px rgba(0,0,0,.6);animation:fadeUp .4s ease both}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+  .card::before{content:'';position:absolute;top:0;left:10%;right:10%;height:1px;
+    background:linear-gradient(90deg,transparent,var(--accent),var(--accent2),transparent)}
+  .logo{font-size:28px;font-weight:800;letter-spacing:-.5px;
+    background:linear-gradient(135deg,var(--accent),var(--accent2));
+    -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;margin-bottom:4px}
+  .logo-dot{display:inline-block;width:8px;height:8px;background:var(--accent);border-radius:50%;
+    margin-left:3px;vertical-align:middle;box-shadow:0 0 8px var(--accent);animation:pulse 2s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+  .subtitle{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);
+    letter-spacing:2px;text-transform:uppercase;margin-bottom:28px}
+  .btn{width:100%;padding:14px 20px;border-radius:10px;border:none;font-family:'Syne',sans-serif;
+    font-size:15px;font-weight:700;cursor:pointer;transition:all .2s ease;letter-spacing:.3px}
+  .btn-primary{background:linear-gradient(135deg,var(--accent2),#5500cc);color:#fff;
+    box-shadow:0 4px 20px rgba(123,47,255,.3)}
+  .btn-primary:hover{transform:translateY(-1px);box-shadow:0 8px 28px rgba(123,47,255,.45)}
+  .btn-primary:active{transform:translateY(0)}
+  .btn:disabled{opacity:.4;cursor:not-allowed;transform:none!important}
+  .status-bar{display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:8px;
+    background:rgba(0,0,0,.3);border:1px solid var(--border);
+    font-family:'JetBrains Mono',monospace;font-size:12px;margin-bottom:16px}
+  .status-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+  .status-dot.waiting{background:var(--muted)}
+  .status-dot.live{background:var(--success);box-shadow:0 0 8px var(--success);animation:pulse 1.5s infinite}
+  .status-dot.error{background:var(--error)}
+  .status-dot.loading{background:var(--accent);animation:pulse 1s infinite}
+  .room-block{margin-top:24px;padding:20px;border-radius:12px;background:rgba(0,229,255,.03);
+    border:1px solid rgba(0,229,255,.12)}
+  .room-label{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);
+    letter-spacing:2px;text-transform:uppercase;margin-bottom:8px}
+  .room-code{font-family:'JetBrains Mono',monospace;font-size:48px;font-weight:700;color:var(--accent);
+    letter-spacing:12px;text-shadow:0 0 20px rgba(0,229,255,.4);margin-bottom:16px;word-break:break-all}
+  .room-url{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text);
+    background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:6px;padding:10px 14px;
+    word-break:break-all;line-height:1.5;cursor:pointer;transition:border-color .2s}
+  .room-url:hover{border-color:var(--accent)}
+  .copy-hint{font-size:10px;color:var(--muted);margin-top:6px;font-family:'JetBrains Mono',monospace}
+  .copy-hint.copied{color:var(--success)}
+  .viewer-badge{display:inline-flex;align-items:center;gap:6px;margin-top:12px;
+    font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted)}
+  .viewer-badge.connected{color:var(--success)}
+  .input-group{position:relative;margin-bottom:16px}
+  input{width:100%;padding:14px 16px;background:rgba(0,0,0,.4);border:1px solid var(--border);
+    border-radius:10px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:24px;
+    letter-spacing:8px;text-transform:uppercase;text-align:center;outline:none;
+    transition:border-color .2s,box-shadow .2s}
+  input::placeholder{letter-spacing:1px;color:var(--muted);text-transform:none;font-size:13px}
+  input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,229,255,.08)}
+  .divider{display:flex;align-items:center;gap:12px;margin:20px 0;color:var(--muted);
+    font-size:11px;font-family:'JetBrains Mono',monospace}
+  .divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--border)}
+  #receiverVideo{position:fixed;inset:0;width:100vw;height:100vh;object-fit:contain;
+    background:#000;display:none;z-index:100}
+  .instructions{margin-top:20px;padding:18px;border-radius:10px;background:rgba(0,0,0,.3);
+    border:1px solid var(--border)}
+  .instructions-title{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);
+    letter-spacing:2px;text-transform:uppercase;margin-bottom:10px}
+  .step{display:flex;gap:12px;margin-bottom:10px;font-size:13px;color:var(--text);line-height:1.5;align-items:flex-start}
+  .step:last-child{margin-bottom:0}
+  .step-num{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--accent2);
+    background:rgba(123,47,255,.15);border-radius:4px;padding:1px 7px;flex-shrink:0;margin-top:1px}
+  .mode-toggle{margin-top:16px;text-align:center;font-size:13px;color:var(--muted)}
+  .mode-toggle a{color:var(--accent);text-decoration:none;cursor:pointer}
+  .sharing-indicator{display:flex;align-items:center;gap:8px;margin-bottom:16px;font-size:13px;color:var(--success)}
+  .rec-dot{width:10px;height:10px;background:var(--error);border-radius:50%;animation:pulse 1.2s infinite;
+    box-shadow:0 0 8px var(--error)}
+  .btn-stop{background:rgba(255,68,102,.1);border:1px solid rgba(255,68,102,.3);color:var(--error);margin-top:10px}
+  .btn-stop:hover{background:rgba(255,68,102,.2);border-color:var(--error)}
+
+  /* Android help panel */
+  .android-help{margin-top:14px;padding:14px 16px;border-radius:10px;
+    background:rgba(123,47,255,.08);border:1px solid rgba(123,47,255,.25);
+    font-family:'JetBrains Mono',monospace;font-size:11px;line-height:1.7;color:var(--muted);display:none}
+  .android-help.show{display:block}
+  .android-help strong{color:var(--accent);display:block;margin-bottom:6px;font-size:12px;letter-spacing:1px}
+  .android-help ol{padding-left:18px}
+  .android-help li{margin-bottom:4px}
+  .android-help a{color:var(--accent2);text-decoration:underline;cursor:pointer}
+  .open-chrome-btn{margin-top:10px;width:100%;padding:10px;border-radius:8px;border:none;
+    background:linear-gradient(135deg,#1a73e8,#0d47a1);color:#fff;font-family:'Syne',sans-serif;
+    font-size:13px;font-weight:700;cursor:pointer;display:none}
+  .open-chrome-btn.show{display:block}
 </style>
 </head>
 <body>
 <video id="receiverVideo" autoplay playsinline></video>
 <div id="app"></div>
-
 <script>
-var FIREBASE_URL = 'https://screenbeam-2f810-default-rtdb.europe-west1.firebasedatabase.app/';
+var FIREBASE_URL='https://screenbeam-2f810-default-rtdb.europe-west1.firebasedatabase.app/';
+var RTC=window.RTCPeerConnection||window.webkitRTCPeerConnection||window.mozRTCPeerConnection;
+var SDESC=window.RTCSessionDescription||window.webkitRTCSessionDescription;
+var ICE_CONFIG={iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}],
+  iceTransportPolicy:'all',bundlePolicy:'max-bundle',rtcpMuxPolicy:'require'};
 
-var RTC   = window.RTCPeerConnection || window.webkitRTCPeerConnection || window.mozRTCPeerConnection;
-var SDESC = window.RTCSessionDescription || window.webkitRTCSessionDescription;
-var ICEC  = window.RTCIceCandidate    || window.webkitRTCIceCandidate;
+// Detect Android + Chrome Custom Tab context
+var ua = navigator.userAgent || '';
+var isAndroid = /Android/i.test(ua);
+var isChromeBrowser = /Chrome\//.test(ua) && !/Chromium/.test(ua);
+// Custom Tab detection: has Chrome UA but document.hidden behaves differently,
+// and critically window.chrome.app is absent in Custom Tabs
+var isCustomTab = isAndroid && isChromeBrowser && !(window.chrome && window.chrome.app !== undefined);
 
-var ICE_CONFIG = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302'  },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' }
-  ],
-  iceTransportPolicy: 'all',
-  bundlePolicy: 'max-bundle',
-  rtcpMuxPolicy: 'require'
-};
+// getDisplayMedia availability
+var gdmAvailable = !!(navigator.mediaDevices && typeof navigator.mediaDevices.getDisplayMedia === 'function');
+// On Android, even if gdmAvailable is true, it may silently fail in Custom Tabs.
+// We always try — never block — but show Android help on failure.
 
-// KEY FIX: Never block the button based on feature detection alone.
-// getDisplayMedia can exist but still fail on certain Android Chrome builds
-// depending on flags, Chrome version, or app context. Always let the user try.
-// We detect support but only use it for a soft hint, not a hard block.
-var hasGetDisplayMedia = !!(
-  navigator.mediaDevices &&
-  typeof navigator.mediaDevices.getDisplayMedia === 'function'
-);
+var hashCode=location.hash.slice(1).toUpperCase().trim();
+var isRecv=hashCode.length>0;
+var roomArg=hashCode;
+isRecv?renderReceiver():renderSender();
 
-window.onerror = function(msg, src, line) {
-  var app = document.getElementById('app');
-  if (app && app.innerHTML.length < 10) {
-    app.innerHTML = '<div style="color:#ff4466;font-family:monospace;padding:40px;max-width:90vw">'
-      + '<div style="font-size:18px;margin-bottom:10px">ScreenBeam Error</div>'
-      + '<div style="font-size:13px">' + msg + '</div>'
-      + '<div style="font-size:11px;opacity:0.5;margin-top:6px">Line ' + line + '</div>'
-      + '</div>';
-  }
-};
+function fbGet(p,cb){var x=new XMLHttpRequest();x.open('GET',FIREBASE_URL+p+'.json',true);
+  x.onload=function(){try{cb(null,JSON.parse(x.responseText))}catch(e){cb(null,null)}};
+  x.onerror=function(){cb(new Error('network'),null)};x.send()}
+function fbPut(p,data,cb){var x=new XMLHttpRequest();x.open('PUT',FIREBASE_URL+p+'.json',true);
+  x.setRequestHeader('Content-Type','application/json');
+  x.onload=function(){if(cb)cb(null)};x.onerror=function(){if(cb)cb(new Error('network'))};
+  x.send(JSON.stringify(data))}
+function fbDelete(p){var x=new XMLHttpRequest();x.open('DELETE',FIREBASE_URL+p+'.json',true);x.send()}
 
-function fbGet(path, cb) {
-  var x = new XMLHttpRequest();
-  x.open('GET', FIREBASE_URL + path + '.json', true);
-  x.onload  = function() { try { cb(null, JSON.parse(x.responseText)); } catch(e) { cb(null, null); } };
-  x.onerror = function() { cb(new Error('network'), null); };
-  x.send();
-}
-function fbPut(path, data, cb) {
-  var x = new XMLHttpRequest();
-  x.open('PUT', FIREBASE_URL + path + '.json', true);
-  x.setRequestHeader('Content-Type', 'application/json');
-  x.onload  = function() { if (cb) cb(null); };
-  x.onerror = function() { if (cb) cb(new Error('network')); };
-  x.send(JSON.stringify(data));
-}
-function fbDelete(path) {
-  var x = new XMLHttpRequest();
-  x.open('DELETE', FIREBASE_URL + path + '.json', true);
-  x.send();
-}
+function waitForICE(pc,callback){
+  if(pc.iceGatheringState==='complete'){callback(pc.localDescription);return}
+  var done=false;
+  var timer=setTimeout(function(){if(!done){done=true;callback(pc.localDescription)}},3000);
+  pc.onicegatheringstatechange=function(){
+    if(pc.iceGatheringState==='complete'&&!done){done=true;clearTimeout(timer);callback(pc.localDescription)}}}
 
-var hashCode = location.hash.slice(1).toUpperCase().trim();
-var isRecv   = hashCode.length > 0;
-var roomArg  = hashCode;
+function preferH264(sdp){
+  var match=sdp.match(/a=rtpmap:(\d+) H264\/90000/);if(!match)return sdp;var pt=match[1];
+  return sdp.replace(/(m=video \d+ \S+ )([\d ]+)/,function(_,prefix,pts){
+    var list=pts.trim().split(' ').filter(function(p){return p!==pt});return prefix+pt+' '+list.join(' ')})}
 
-isRecv ? renderReceiver() : renderSender();
-
-// ═══════════════════════════════
-//  SHARED HELPERS
-// ═══════════════════════════════
-function waitForICE(pc, callback) {
-  if (pc.iceGatheringState === 'complete') { callback(pc.localDescription); return; }
-  var done = false;
-  var timer = setTimeout(function() {
-    if (!done) { done = true; callback(pc.localDescription); }
-  }, 3000);
-  pc.onicegatheringstatechange = function() {
-    if (pc.iceGatheringState === 'complete' && !done) {
-      done = true; clearTimeout(timer); callback(pc.localDescription);
-    }
-  };
-}
-
-function preferH264(sdp) {
-  var match = sdp.match(/a=rtpmap:(\d+) H264\/90000/);
-  if (!match) return sdp;
-  var pt = match[1];
-  return sdp.replace(/(m=video \d+ \S+ )([\d ]+)/, function(_, prefix, pts) {
-    var list = pts.trim().split(' ').filter(function(p) { return p !== pt; });
-    return prefix + pt + ' ' + list.join(' ');
-  });
-}
-
-function sanitizeSDP(sdp) {
-  var lines = sdp.split('\r\n');
-  var out = []; var inVideo = false;
-  for (var i = 0; i < lines.length; i++) {
-    var l = lines[i];
-    if (l === 'a=extmap-allow-mixed') continue;
-    if (l.indexOf('m=video') === 0) { inVideo = true; }
-    else if (l.indexOf('m=') === 0) { inVideo = false; }
-    if (inVideo && (l.indexOf('b=AS:') === 0 || l.indexOf('b=TIAS:') === 0)) continue;
+function sanitizeSDP(sdp){
+  var lines=sdp.split('\r\n'),out=[],inVideo=false;
+  for(var i=0;i<lines.length;i++){var l=lines[i];
+    if(l==='a=extmap-allow-mixed')continue;
+    if(l.indexOf('m=video')===0){inVideo=true}else if(l.indexOf('m=')===0){inVideo=false}
+    if(inVideo&&(l.indexOf('b=AS:')===0||l.indexOf('b=TIAS:')===0))continue;
     out.push(l);
-    if (l.indexOf('m=video') === 0) { out.push('b=AS:10000'); out.push('b=TIAS:10000000'); }
-  }
-  return preferH264(out.join('\r\n'));
-}
+    if(l.indexOf('m=video')===0){out.push('b=AS:10000');out.push('b=TIAS:10000000')}}
+  return preferH264(out.join('\r\n'))}
 
-function boostSenderBitrate(pc) {
-  try {
-    var senders = pc.getSenders();
-    for (var i = 0; i < senders.length; i++) {
-      var s = senders[i];
-      if (!s.track || s.track.kind !== 'video') continue;
-      var p = s.getParameters();
-      if (!p.encodings) p.encodings = [{}];
-      for (var j = 0; j < p.encodings.length; j++) {
-        p.encodings[j].maxBitrate = 8000000;
-        p.encodings[j].maxFramerate = 30;
-        p.encodings[j].priority = 'high';
-        p.encodings[j].networkPriority = 'high';
-        p.encodings[j].degradationPreference = 'balanced';
-      }
-      s.setParameters(p).catch(function(){});
-    }
-  } catch(e) {}
-}
+function boostSenderBitrate(pc){
+  try{var senders=pc.getSenders();for(var i=0;i<senders.length;i++){var s=senders[i];
+    if(!s.track||s.track.kind!=='video')continue;var p=s.getParameters();
+    if(!p.encodings)p.encodings=[{}];
+    for(var j=0;j<p.encodings.length;j++){p.encodings[j].maxBitrate=8000000;
+      p.encodings[j].maxFramerate=30;p.encodings[j].priority='high';
+      p.encodings[j].networkPriority='high';p.encodings[j].degradationPreference='balanced'}
+    s.setParameters(p).catch(function(){})}}catch(e){}}
 
-function playStream(vid, stream) {
-  var set = false;
-  if ('srcObject' in vid) { try { vid.srcObject = stream; set = true; } catch(e) {} }
-  if (!set) {
-    try { vid.src = URL.createObjectURL(stream); } catch(e2) {
-      recvSetStatus('error', 'Video API not supported on this browser'); return;
-    }
-  }
-  vid.muted = true;
-  vid.style.display = 'block';
-  document.getElementById('app').style.display = 'none';
-  document.body.style.background = '#000';
-  var go = vid.requestFullscreen || vid.webkitRequestFullscreen || vid.mozRequestFullScreen || vid.msRequestFullscreen;
-  if (go) { try { go.call(vid); } catch(e) {} }
-  vid.play().then(function() {
-    try { vid.muted = false; } catch(e) {}
-  }).catch(function() {
-    recvSetStatus('loading', 'Tap screen to start playback');
-    function tap() { vid.play().catch(function(){}); try { vid.muted = false; } catch(e){} document.removeEventListener('click', tap); }
-    document.addEventListener('click', tap);
-  });
-}
+function playStream(vid,stream){
+  var set=false;
+  if('srcObject' in vid){try{vid.srcObject=stream;set=true}catch(e){}}
+  if(!set){try{vid.src=URL.createObjectURL(stream)}catch(e2){recvSetStatus('error','Video API not supported');return}}
+  vid.muted=true;vid.style.display='block';
+  document.getElementById('app').style.display='none';document.body.style.background='#000';
+  var go=vid.requestFullscreen||vid.webkitRequestFullscreen||vid.mozRequestFullScreen||vid.msRequestFullscreen;
+  if(go){try{go.call(vid)}catch(e){}}
+  vid.play().then(function(){try{vid.muted=false}catch(e){}}).catch(function(){
+    recvSetStatus('loading','Tap screen to start playback');
+    function tap(){vid.play().catch(function(){});try{vid.muted=false}catch(e){}document.removeEventListener('click',tap)}
+    document.addEventListener('click',tap)})}
 
-// ═══════════════════════════════
-//  SENDER
-// ═══════════════════════════════
-var activePc = null; var activeStream = null; var activeRoomId = null; var senderTimers = [];
+// ═══════════════════ SENDER ═══════════════════
+var activePc=null,activeStream=null,activeRoomId=null,senderTimers=[];
 
-function renderSender() {
-  var app = document.getElementById('app');
+function renderSender(){
+  var app=document.getElementById('app');
+  app.innerHTML=
+    '<div class="card">'+
+      '<div class="logo">ScreenBeam<span class="logo-dot"></span></div>'+
+      '<div class="subtitle">Local Network · WebRTC · Zero Lag</div>'+
+      '<div class="status-bar" id="senderStatus"><div class="status-dot waiting"></div><span>Ready to cast</span></div>'+
+      '<button class="btn btn-primary" id="startBtn" onclick="startSharing()">▶ &nbsp;Share My Screen</button>'+
 
-  // KEY FIX: Show a soft info note if getDisplayMedia is not detected,
-  // but still allow the button to be clicked. Some browsers report
-  // the API differently but still support it when triggered by user gesture.
-  var infoNote = !hasGetDisplayMedia
-    ? '<div class="info-note"><span>Tip:</span> If sharing fails, make sure you\'re using Chrome (not Samsung Internet or another browser). Open Chrome and paste: <strong>screenbeam.vercel.app</strong></div>'
-    : '';
+      // Android Custom Tab help — shown only on failure
+      '<div class="android-help" id="androidHelp">'+
+        '<strong>⚠ Android: Open in full Chrome tab</strong>'+
+        'Screen sharing is blocked in embedded browser windows. Fix it in 2 steps:'+
+        '<ol>'+
+          '<li>Tap the <strong>⋮ menu</strong> (top-right of this page)</li>'+
+          '<li>Tap <strong>"Open in Chrome"</strong> or <strong>"Open in browser"</strong></li>'+
+        '</ol>'+
+        'Then tap Share My Screen again.'+
+      '</div>'+
+      '<button class="open-chrome-btn" id="openChromeBtn" onclick="tryOpenInChrome()">'+
+        '⧉ Open in Chrome Browser'+
+      '</button>'+
 
-  app.innerHTML =
-    '<div class="card">' +
-      '<div class="logo">ScreenBeam<span class="logo-dot"></span></div>' +
-      '<div class="subtitle">Local Network &middot; WebRTC &middot; Zero Lag</div>' +
-      '<div class="status-bar" id="senderStatus"><div class="status-dot waiting"></div><span>Ready to cast</span></div>' +
-      '<button class="btn btn-primary" id="startBtn" style="margin-top:4px" onclick="startSharing()">&#9654; &nbsp; Share My Screen</button>' +
-      infoNote +
-      '<div id="shareControls" style="display:none">' +
-        '<div class="sharing-indicator"><div class="rec-dot"></div><span>Sharing — stream is live</span></div>' +
-        '<div class="room-block" id="roomBlock"></div>' +
-        '<button class="btn btn-stop" onclick="stopSharing()">&#9632; &nbsp; Stop Sharing</button>' +
-      '</div>' +
-      '<div class="divider">how to connect tv</div>' +
-      '<div class="instructions">' +
-        '<div class="instructions-title">How to connect TV</div>' +
-        '<div class="step"><span class="step-num">1</span><span>Click <strong>Share My Screen</strong> and accept the screen share prompt</span></div>' +
-        '<div class="step"><span class="step-num">2</span><span>On TV browser, go to: <code style="color:var(--accent);font-family:JetBrains Mono,monospace">screenbeam.vercel.app</code> and enter the 2-letter code</span></div>' +
-        '<div class="step"><span class="step-num">3</span><span>TV connects instantly via WebRTC</span></div>' +
-      '</div>' +
-      '<div class="mode-toggle">On the TV? <a onclick="switchToReceiver()">Switch to receiver mode</a></div>' +
+      '<div id="shareControls" style="display:none">'+
+        '<div class="sharing-indicator"><div class="rec-dot"></div><span>Sharing — stream is live</span></div>'+
+        '<div class="room-block" id="roomBlock"></div>'+
+        '<button class="btn btn-stop" onclick="stopSharing()">■ &nbsp;Stop Sharing</button>'+
+      '</div>'+
+      '<div class="divider">how to connect tv</div>'+
+      '<div class="instructions">'+
+        '<div class="instructions-title">How to connect TV</div>'+
+        '<div class="step"><span class="step-num">1</span><span>Click <strong>Share My Screen</strong> and accept the screen share prompt</span></div>'+
+        '<div class="step"><span class="step-num">2</span><span>On TV browser, go to <code style="color:var(--accent);font-family:JetBrains Mono,monospace">screenbeam.vercel.app</code> and enter the 2-letter code</span></div>'+
+        '<div class="step"><span class="step-num">3</span><span>TV connects instantly via WebRTC</span></div>'+
+      '</div>'+
+      '<div class="mode-toggle">On the TV? <a onclick="switchToReceiver()">Switch to receiver mode</a></div>'+
     '</div>';
 }
 
-function startSharing() {
-  var btn = document.getElementById('startBtn');
-  btn.disabled = true;
-  btn.textContent = 'Requesting screen access…';
-  setStatus('loading', 'Requesting screen access…');
+function tryOpenInChrome(){
+  // Deep-link to open current URL in Chrome proper
+  var url=location.href;
+  // intent:// scheme forces Chrome on Android
+  var intent='intent://'+url.replace(/^https?:\/\//,'')+'#Intent;scheme=https;package=com.android.chrome;end';
+  try{location.href=intent}catch(e){
+    // fallback: just copy the URL and tell user
+    if(navigator.clipboard){navigator.clipboard.writeText(url)}
+    alert('Copy this URL and paste it into Chrome:\n\n'+url)}
+}
 
-  // KEY FIX: Attempt to get getDisplayMedia from multiple locations.
-  // On some Android Chrome versions it may be on navigator.mediaDevices
-  // but not detected by our static check, or may need to be accessed fresh.
-  var gdm = null;
-  if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
-    gdm = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
-  } else if (navigator.getDisplayMedia) {
-    // older Chrome / Firefox API location
-    gdm = navigator.getDisplayMedia.bind(navigator);
+function showAndroidHelp(){
+  var h=document.getElementById('androidHelp');
+  var b=document.getElementById('openChromeBtn');
+  if(h){h.classList.add('show')}
+  if(b&&isAndroid){b.classList.add('show')}
+}
+
+function startSharing(){
+  var btn=document.getElementById('startBtn');
+  btn.disabled=true;btn.textContent='Requesting screen access…';
+  setStatus('loading','Requesting screen access…');
+
+  // Hide any previous help panels
+  var h=document.getElementById('androidHelp');if(h)h.classList.remove('show');
+  var ob=document.getElementById('openChromeBtn');if(ob)ob.classList.remove('show');
+
+  // Resolve getDisplayMedia from wherever it lives
+  var gdm=null;
+  if(navigator.mediaDevices&&navigator.mediaDevices.getDisplayMedia){
+    gdm=function(c){return navigator.mediaDevices.getDisplayMedia(c)};
+  } else if(navigator.getDisplayMedia){
+    gdm=function(c){return navigator.getDisplayMedia(c)};
   }
 
-  if (!gdm) {
-    // Last resort: show a clear actionable error
-    btn.disabled = false;
-    btn.innerHTML = '&#9654; &nbsp; Share My Screen';
-    setStatus('error', 'Open this page in Chrome browser — tap the 3-dot menu → "Open in Chrome"');
+  if(!gdm){
+    btn.disabled=false;btn.innerHTML='▶ &nbsp;Share My Screen';
+    setStatus('error','Screen sharing API not available');
+    showAndroidHelp();
     return;
   }
 
-  var constraints = {
-    video: { frameRate: { ideal: 30, max: 30 }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-    audio: { echoCancellation: false, noiseSuppression: false, sampleRate: 48000 }
-  };
-
-  // KEY FIX: Some Android versions reject audio in getDisplayMedia constraints.
-  // Try with audio first, fall back to video-only if it fails.
-  function tryShare(withAudio) {
-    var c = withAudio ? constraints : { video: constraints.video };
-    gdm(c).then(function(stream) {
-      activeStream = stream;
-      try { activeStream.getVideoTracks()[0].contentHint = 'motion'; } catch(e) {}
-      activeStream.getVideoTracks()[0].onended = function() { stopSharing(); };
-
-      var SAFE = 'ACDEFGHJKLMNPQRTUVWXY3478';
-      var roomId = '';
-      for (var ci = 0; ci < 2; ci++) { roomId += SAFE[Math.floor(Math.random() * SAFE.length)]; }
-      activeRoomId = roomId;
-      fbDelete('/rooms/' + roomId);
-      setStatus('loading', 'Gathering network paths…');
-
-      activePc = new RTC(ICE_CONFIG);
-      activeStream.getTracks().forEach(function(t) { activePc.addTrack(t, activeStream); });
-
-      activePc.onconnectionstatechange = function() {
-        var st = activePc.connectionState;
-        if (st === 'connected')    { setStatus('live', 'Streaming'); updateViewerBadge(true);  boostSenderBitrate(activePc); }
-        if (st === 'disconnected' || st === 'failed') { setStatus('live', 'Viewer disconnected — waiting'); updateViewerBadge(false); }
-      };
-
-      activePc.createOffer().then(function(o) {
-        return activePc.setLocalDescription(o);
-      }).then(function() {
-        setStatus('loading', 'Finding best path… (takes ~2s)');
-        waitForICE(activePc, function(localDesc) {
-          fbPut('/rooms/' + roomId + '/offer', {
-            type: localDesc.type,
-            sdp:  sanitizeSDP(localDesc.sdp)
-          }, function() {
-            btn.style.display = 'none';
-            document.getElementById('shareControls').style.display = 'block';
-            var tvUrl = 'https://screenbeam.vercel.app/#' + roomId;
-            document.getElementById('roomBlock').innerHTML =
-              '<div class="room-label">Room code — enter on TV</div>' +
-              '<div class="room-code">' + roomId + '</div>' +
-              '<div class="room-label">Or open this URL directly</div>' +
-              '<div class="room-url" id="tvUrlBox" onclick="copyUrl(\'' + tvUrl + '\')">' + tvUrl + '</div>' +
-              '<div class="copy-hint" id="copyHint">&#8593; tap to copy</div>' +
-              '<div class="viewer-badge" id="viewerBadge"><div class="status-dot waiting"></div>Waiting for TV to connect…</div>';
-            setStatus('live', 'Live — waiting for viewer');
-
-            var answered = false;
-            var t = setInterval(function() {
-              fbGet('/rooms/' + roomId + '/answer', function(err, data) {
-                if (data && data.sdp && !answered) {
-                  answered = true;
-                  clearInterval(t);
-                  activePc.setRemoteDescription(new SDESC(data)).catch(function(e) {
-                    setStatus('error', 'Answer SDP error: ' + e.message);
-                  });
-                }
-              });
-            }, 300);
-            senderTimers.push(t);
-          });
-        });
-      }).catch(function(e) {
-        setStatus('error', 'Offer failed: ' + e.message);
-        btn.disabled = false;
-        btn.innerHTML = '&#9654; &nbsp; Share My Screen';
-      });
-
-    }).catch(function(err) {
-      // KEY FIX: If audio caused the failure, retry without it
-      if (withAudio && err && (err.name === 'NotSupportedError' || err.name === 'TypeError' || err.name === 'OverconstrainedError')) {
-        setStatus('loading', 'Retrying without audio…');
-        tryShare(false);
-        return;
-      }
-
-      btn.disabled = false;
-      btn.innerHTML = '&#9654; &nbsp; Share My Screen';
-
-      var msg;
-      if (err && err.name === 'NotAllowedError') {
-        msg = 'Tap "Share My Screen" then allow — select a tab, window, or your screen';
-      } else if (err && (err.name === 'NotSupportedError' || err.name === 'TypeError')) {
-        msg = 'Open this page in Chrome — tap ⋮ → Open in Chrome';
-      } else if (err && err.name === 'InvalidStateError') {
-        msg = 'Please reload the page and try again';
-      } else {
-        msg = (err && (err.message || err.name)) ? (err.name + ': ' + err.message) : 'Unknown error — make sure you\'re using Chrome';
-      }
-      setStatus('error', msg);
+  function doShare(constraints){
+    return gdm(constraints).then(function(stream){
+      activeStream=stream;
+      try{activeStream.getVideoTracks()[0].contentHint='motion'}catch(e){}
+      activeStream.getVideoTracks()[0].onended=function(){stopSharing()};
+      launchSession();
     });
   }
 
-  tryShare(true);
-}
-
-function stopSharing() {
-  for (var i = 0; i < senderTimers.length; i++) clearInterval(senderTimers[i]);
-  senderTimers = [];
-  if (activeStream) { activeStream.getTracks().forEach(function(t) { t.stop(); }); activeStream = null; }
-  if (activePc) { try { activePc.close(); } catch(e) {} activePc = null; }
-  if (activeRoomId) { fbDelete('/rooms/' + activeRoomId); activeRoomId = null; }
-  renderSender(); setStatus('waiting', 'Sharing stopped');
-}
-
-function updateViewerBadge(connected) {
-  var b = document.getElementById('viewerBadge'); if (!b) return;
-  b.className = 'viewer-badge' + (connected ? ' connected' : '');
-  b.innerHTML = connected
-    ? '<div class="status-dot live"></div>TV connected'
-    : '<div class="status-dot waiting"></div>Waiting for TV to connect…';
-}
-
-function copyUrl(url) {
-  try { navigator.clipboard.writeText(url).then(function() {
-    var h = document.getElementById('copyHint'); if (!h) return;
-    h.textContent = 'Copied!'; h.className = 'copy-hint copied';
-    setTimeout(function() { h.textContent = 'tap to copy'; h.className = 'copy-hint'; }, 2000);
-  }); } catch(e) {}
-}
-
-function setStatus(type, msg) {
-  var b = document.getElementById('senderStatus'); if (!b) return;
-  b.querySelector('.status-dot').className = 'status-dot ' + type;
-  b.querySelector('span').textContent = msg;
-}
-
-function switchToReceiver() {
-  var r = prompt('Enter Room Code:');
-  if (r) { location.hash = r.trim().toUpperCase(); location.reload(); }
-}
-
-// ═══════════════════════════════
-//  RECEIVER (TV side)
-// ═══════════════════════════════
-var recvPc = null; var recvTimers = [];
-
-function renderReceiver() {
-  var app = document.getElementById('app');
-  app.innerHTML =
-    '<div class="card">' +
-      '<div class="logo">ScreenBeam<span class="logo-dot"></span></div>' +
-      '<div class="subtitle">Receiver Mode &middot; TV / Display</div>' +
-      '<div class="status-bar" id="recvStatus"><div class="status-dot waiting"></div>' +
-        '<span>' + (roomArg ? 'Connecting to ' + roomArg + '...' : 'Enter room code') + '</span></div>' +
-      '<div class="input-group">' +
-        '<input type="text" id="codeInput" placeholder="2-letter code" maxlength="2"' +
-        ' value="' + roomArg + '" oninput="this.value=this.value.toUpperCase()">' +
-      '</div>' +
-      '<button class="btn btn-primary" id="connectBtn" onclick="connectReceiver()">&#10230; &nbsp; Connect to Stream</button>' +
-      '<div class="mode-toggle" style="margin-top:20px">On the PC/phone? ' +
-        '<a href="/" onclick="location.hash=\'\';location.href=\'/\';return false;">Switch to sender</a>' +
-      '</div>' +
-    '</div>';
-  if (roomArg) { setTimeout(connectReceiver, 600); }
-}
-
-function connectReceiver() {
-  for (var i = 0; i < recvTimers.length; i++) { clearInterval(recvTimers[i]); clearTimeout(recvTimers[i]); }
-  recvTimers = [];
-  if (recvPc) { try { recvPc.close(); } catch(e) {} recvPc = null; }
-
-  var codeInput = document.getElementById('codeInput');
-  var roomId = ((codeInput ? codeInput.value : '') || roomArg).trim().toUpperCase();
-  if (!roomId) { recvSetStatus('error', 'Enter a room code'); return; }
-
-  var btn = document.getElementById('connectBtn');
-  if (btn) { btn.disabled = true; btn.textContent = 'Connecting...'; }
-  recvSetStatus('loading', 'Looking for sender...');
-
-  var attempts = 0; var answering = false;
-
-  var offerTimer = setInterval(function() {
-    attempts++;
-    if (attempts > 60) {
-      clearInterval(offerTimer);
-      recvSetStatus('error', 'Sender not found — check room code');
-      if (btn) { btn.disabled = false; btn.textContent = '&#10230;  Retry'; }
-      return;
+  // Try with audio + video, fall back to video only
+  doShare({
+    video:{frameRate:{ideal:30,max:30},width:{ideal:1920},height:{ideal:1080}},
+    audio:{echoCancellation:false,noiseSuppression:false,sampleRate:48000}
+  }).catch(function(err){
+    // Audio constraint might be the issue — retry without
+    if(err&&(err.name==='NotSupportedError'||err.name==='TypeError'||err.name==='OverconstrainedError'||err.name==='InvalidStateError')){
+      return doShare({video:{frameRate:{ideal:30,max:30},width:{ideal:1920},height:{ideal:1080}}});
     }
-    if (attempts > 3) recvSetStatus('loading', 'Waiting for sender... (' + attempts + 's)');
+    return Promise.reject(err);
+  }).catch(function(err){
+    btn.disabled=false;btn.innerHTML='▶ &nbsp;Share My Screen';
+    var name=err?err.name:'';
+    var msg=err?(err.message||err.name||String(err)):'Unknown error';
 
-    fbGet('/rooms/' + roomId + '/offer', function(err, offer) {
-      if (err) {
-        clearInterval(offerTimer);
-        recvSetStatus('error', 'Firebase error — check internet');
-        if (btn) { btn.disabled = false; btn.textContent = '&#10230;  Retry'; }
-        return;
-      }
-      if (!offer || !offer.sdp || answering) return;
-      answering = true;
-      clearInterval(offerTimer);
-      recvSetStatus('loading', 'Sender found — connecting...');
-
-      recvPc = new RTC(ICE_CONFIG);
-
-      recvPc.ontrack = function(e) {
-        if (!e.streams || !e.streams[0]) return;
-        var stream = e.streams[0];
-        var vid = document.getElementById('receiverVideo');
-        playStream(vid, stream);
-        var tracks = stream.getTracks();
-        for (var t = 0; t < tracks.length; t++) {
-          tracks[t].onended = function() {
-            vid.style.display = 'none';
-            document.getElementById('app').style.display = 'flex';
-            document.body.style.background = '';
-            renderReceiver();
-            recvSetStatus('error', 'Stream ended — sender stopped sharing');
-          };
-        }
-        vid.onclick = function() {
-          var fs = document.fullscreenElement || document.webkitFullscreenElement;
-          var ex = fs ? (document.exitFullscreen || document.webkitExitFullscreen) : null;
-          if (ex) { try { ex.call(document); } catch(e2) {} }
-          else { vid.style.display='none'; document.getElementById('app').style.display='flex'; document.body.style.background=''; renderReceiver(); }
-        };
-      };
-
-      recvPc.onconnectionstatechange = function() {
-        var st = recvPc ? (recvPc.connectionState || recvPc.iceConnectionState) : '';
-        if (st === 'failed') {
-          recvSetStatus('error', 'Connection failed — tap Retry');
-          if (btn) { btn.disabled = false; btn.textContent = '&#10230;  Retry'; }
-        }
-      };
-
-      recvPc.setRemoteDescription(new SDESC(offer)).then(function() {
-        return recvPc.createAnswer();
-      }).then(function(ans) {
-        return recvPc.setLocalDescription(ans);
-      }).then(function() {
-        recvSetStatus('loading', 'Gathering paths...');
-        waitForICE(recvPc, function(localDesc) {
-          fbPut('/rooms/' + roomId + '/answer', {
-            type: localDesc.type,
-            sdp:  localDesc.sdp
-          });
-          recvSetStatus('loading', 'Connecting stream...');
-        });
-      }).catch(function(e) {
-        recvSetStatus('error', 'WebRTC error: ' + e.message);
-        if (btn) { btn.disabled = false; btn.textContent = '&#10230;  Retry'; }
-      });
-    });
-  }, 1000);
-
-  recvTimers.push(offerTimer);
+    if(name==='NotAllowedError'){
+      // User dismissed — could be Custom Tab blocking the picker
+      setStatus('error','Permission denied or picker was blocked');
+      if(isAndroid){showAndroidHelp()}
+    } else if(name==='NotSupportedError'||name==='TypeError'){
+      setStatus('error','Screen sharing blocked in this context');
+      showAndroidHelp();
+    } else if(name==='InvalidStateError'){
+      setStatus('error','Please reload the page and try again');
+    } else {
+      setStatus('error',msg);
+      if(isAndroid){showAndroidHelp()}
+    }
+  });
 }
 
-function recvSetStatus(type, msg) {
-  var b = document.getElementById('recvStatus'); if (!b) return;
-  b.querySelector('.status-dot').className = 'status-dot ' + type;
-  b.querySelector('span').textContent = msg;
-}
+function launchSession(){
+  var SAFE='ACDEFGHJKLMNPQRTUVWXY3478';var roomId='';
+  for(var ci=0;ci<2;ci++){roomId+=SAFE[Math.floor(Math.random()*SAFE.length)]}
+  activeRoomId=roomId;
+  fbDelete('/rooms/'+roomId);
+  setStatus('loading','Gathering network paths…');
+  activePc=new RTC(ICE_CONFIG);
+  activeStream.getTracks().forEach(function(t){activePc.addTrack(t,activeStream)});
+  activePc.onconnectionstatechange=function(){
+    var st=activePc.connectionState;
+    if(st==='connected'){setStatus('live','Streaming');updateViewerBadge(true);boostSenderBitrate(activePc)}
+    if(st==='disconnected'||st==='failed'){setStatus('live','Viewer disconnected — waiting');updateViewerBadge(false)}};
+  activePc.createOffer().then(function(o){return activePc.setLocalDescription(o)})
+  .then(function(){
+    setStatus('loading','Finding best path… (~2s)');
+    waitForICE(activePc,function(localDesc){
+      fbPut('/rooms/'+roomId+'/offer',{type:localDesc.type,sdp:sanitizeSDP(localDesc.sdp)},function(){
+        var btn=document.getElementById('startBtn');
+        if(btn)btn.style.display='none';
+        document.getElementById('shareControls').style.display='block';
+        var tvUrl='https://screenbeam.vercel.app/#'+roomId;
+        document.getElementById('roomBlock').innerHTML=
+          '<div class="room-label">Room code — enter on TV</div>'+
+          '<div class="room-code">'+roomId+'</div>'+
+          '<div class="room-label">Or open this URL directly</div>'+
+          '<div class="room-url" id="tvUrlBox" onclick="copyUrl(\''+tvUrl+'\')">'+tvUrl+'</div>'+
+          '<div class="copy-hint" id="copyHint">↑ tap to copy</div>'+
+          '<div class="viewer-badge" id="viewerBadge"><div class="status-dot waiting"></div>Waiting for TV…</div>';
+        setStatus('live','Live — waiting for viewer');
+        var answered=false;
+        var t=setInterval(function(){
+          fbGet('/rooms/'+roomId+'/answer',function(err,data){
+            if(data&&data.sdp&&!answered){answered=true;clearInterval(t);
+              activePc.setRemoteDescription(new SDESC(data)).catch(function(e){setStatus('error','SDP error: '+e.message)})}})},300);
+        senderTimers.push(t)})})})
+  .catch(function(e){setStatus('error','Offer failed: '+e.message);
+    var btn=document.getElementById('startBtn');if(btn){btn.disabled=false;btn.innerHTML='▶ &nbsp;Share My Screen'}})}
+
+function stopSharing(){
+  for(var i=0;i<senderTimers.length;i++)clearInterval(senderTimers[i]);senderTimers=[];
+  if(activeStream){activeStream.getTracks().forEach(function(t){t.stop()});activeStream=null}
+  if(activePc){try{activePc.close()}catch(e){}activePc=null}
+  if(activeRoomId){fbDelete('/rooms/'+activeRoomId);activeRoomId=null}
+  renderSender();setStatus('waiting','Sharing stopped')}
+
+function updateViewerBadge(connected){
+  var b=document.getElementById('viewerBadge');if(!b)return;
+  b.className='viewer-badge'+(connected?' connected':'');
+  b.innerHTML=connected?'<div class="status-dot live"></div>TV connected':'<div class="status-dot waiting"></div>Waiting for TV…'}
+
+function copyUrl(url){
+  try{navigator.clipboard.writeText(url).then(function(){
+    var h=document.getElementById('copyHint');if(!h)return;
+    h.textContent='Copied!';h.className='copy-hint copied';
+    setTimeout(function(){h.textContent='↑ tap to copy';h.className='copy-hint'},2000)})}catch(e){}}
+
+function setStatus(type,msg){
+  var b=document.getElementById('senderStatus');if(!b)return;
+  b.querySelector('.status-dot').className='status-dot '+type;
+  b.querySelector('span').textContent=msg}
+
+function switchToReceiver(){
+  var r=prompt('Enter Room Code:');
+  if(r){location.hash=r.trim().toUpperCase();location.reload()}}
+
+// ═══════════════════ RECEIVER ═══════════════════
+var recvPc=null,recvTimers=[];
+function renderReceiver(){
+  var app=document.getElementById('app');
+  app.innerHTML=
+    '<div class="card">'+
+      '<div class="logo">ScreenBeam<span class="logo-dot"></span></div>'+
+      '<div class="subtitle">Receiver Mode · TV / Display</div>'+
+      '<div class="status-bar" id="recvStatus"><div class="status-dot waiting"></div>'+
+        '<span>'+(roomArg?'Connecting to '+roomArg+'...':'Enter room code')+'</span></div>'+
+      '<div class="input-group">'+
+        '<input type="text" id="codeInput" placeholder="2-letter code" maxlength="2"'+
+        ' value="'+roomArg+'" oninput="this.value=this.value.toUpperCase()">'+
+      '</div>'+
+      '<button class="btn btn-primary" id="connectBtn" onclick="connectReceiver()">⟶ &nbsp;Connect to Stream</button>'+
+      '<div class="mode-toggle" style="margin-top:16px">On the PC/phone? '+
+        '<a href="/" onclick="location.hash=\'\';location.href=\'/\';return false;">Switch to sender</a>'+
+      '</div>'+
+    '</div>';
+  if(roomArg){setTimeout(connectReceiver,600)}}
+
+function connectReceiver(){
+  for(var i=0;i<recvTimers.length;i++){clearInterval(recvTimers[i]);clearTimeout(recvTimers[i])}
+  recvTimers=[];if(recvPc){try{recvPc.close()}catch(e){}recvPc=null}
+  var codeInput=document.getElementById('codeInput');
+  var roomId=((codeInput?codeInput.value:'')||roomArg).trim().toUpperCase();
+  if(!roomId){recvSetStatus('error','Enter a room code');return}
+  var btn=document.getElementById('connectBtn');
+  if(btn){btn.disabled=true;btn.textContent='Connecting...'}
+  recvSetStatus('loading','Looking for sender...');
+  var attempts=0,answering=false;
+  var offerTimer=setInterval(function(){
+    attempts++;
+    if(attempts>60){clearInterval(offerTimer);recvSetStatus('error','Sender not found — check room code');
+      if(btn){btn.disabled=false;btn.textContent='⟶ Retry'}return}
+    if(attempts>3)recvSetStatus('loading','Waiting for sender... ('+attempts+'s)');
+    fbGet('/rooms/'+roomId+'/offer',function(err,offer){
+      if(err){clearInterval(offerTimer);recvSetStatus('error','Firebase error — check internet');
+        if(btn){btn.disabled=false;btn.textContent='⟶ Retry'}return}
+      if(!offer||!offer.sdp||answering)return;
+      answering=true;clearInterval(offerTimer);recvSetStatus('loading','Sender found — connecting...');
+      recvPc=new RTC(ICE_CONFIG);
+      recvPc.ontrack=function(e){
+        if(!e.streams||!e.streams[0])return;var stream=e.streams[0];
+        var vid=document.getElementById('receiverVideo');playStream(vid,stream);
+        var tracks=stream.getTracks();
+        for(var t=0;t<tracks.length;t++){tracks[t].onended=function(){
+          vid.style.display='none';document.getElementById('app').style.display='flex';
+          document.body.style.background='';renderReceiver();
+          recvSetStatus('error','Stream ended')}}
+        vid.onclick=function(){
+          var fs=document.fullscreenElement||document.webkitFullscreenElement;
+          var ex=fs?(document.exitFullscreen||document.webkitExitFullscreen):null;
+          if(ex){try{ex.call(document)}catch(e2){}}
+          else{vid.style.display='none';document.getElementById('app').style.display='flex';
+            document.body.style.background='';renderReceiver()}}};
+      recvPc.onconnectionstatechange=function(){
+        var st=recvPc?(recvPc.connectionState||recvPc.iceConnectionState):'';
+        if(st==='failed'){recvSetStatus('error','Connection failed — tap Retry');
+          if(btn){btn.disabled=false;btn.textContent='⟶ Retry'}}};
+      recvPc.setRemoteDescription(new SDESC(offer)).then(function(){return recvPc.createAnswer()})
+      .then(function(ans){return recvPc.setLocalDescription(ans)})
+      .then(function(){recvSetStatus('loading','Gathering paths...');
+        waitForICE(recvPc,function(localDesc){
+          fbPut('/rooms/'+roomId+'/answer',{type:localDesc.type,sdp:localDesc.sdp});
+          recvSetStatus('loading','Connecting stream...')})})
+      .catch(function(e){recvSetStatus('error','WebRTC error: '+e.message);
+        if(btn){btn.disabled=false;btn.textContent='⟶ Retry'}})})},1000);
+  recvTimers.push(offerTimer)}
+
+function recvSetStatus(type,msg){
+  var b=document.getElementById('recvStatus');if(!b)return;
+  b.querySelector('.status-dot').className='status-dot '+type;
+  b.querySelector('span').textContent=msg}
 </script>
 </body>
 </html>
