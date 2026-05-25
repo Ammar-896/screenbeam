@@ -141,11 +141,13 @@ var ICE_CONFIG = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302'  },
     { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'turn:openrelay.metered.ca:80',   username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turn:openrelay.metered.ca:443',  username: 'openrelayproject', credential: 'openrelayproject' },
-    { urls: 'turns:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
-  ]
+    { urls: 'stun:stun2.l.google.com:19302' }
+    // No TURN — TURN relays cap bandwidth to ~1Mbps on free servers.
+    // PC + TV on same WiFi connect direct via local ICE candidates anyway.
+  ],
+  iceTransportPolicy: 'all',
+  bundlePolicy: 'max-bundle',
+  rtcpMuxPolicy: 'require'
 };
 
 // Global error trap
@@ -221,9 +223,9 @@ if (FIREBASE_URL.indexOf('YOUR-PROJECT') !== -1) {
 function waitForICE(pc, callback) {
   if (pc.iceGatheringState === 'complete') { callback(pc.localDescription); return; }
   var done = false;
-  var timer = setTimeout(function() { // safety: give up after 6s and use whatever we have
+  var timer = setTimeout(function() { // no TURN servers so gathering is fast — 3s max
     if (!done) { done = true; callback(pc.localDescription); }
-  }, 6000);
+  }, 3000);
   pc.onicegatheringstatechange = function() {
     if (pc.iceGatheringState === 'complete' && !done) {
       done = true; clearTimeout(timer); callback(pc.localDescription);
@@ -268,10 +270,11 @@ function boostSenderBitrate(pc) {
       var p = s.getParameters();
       if (!p.encodings) p.encodings = [{}];
       for (var j = 0; j < p.encodings.length; j++) {
-        p.encodings[j].maxBitrate = 8000000;
-        p.encodings[j].maxFramerate = 60;
+        p.encodings[j].maxBitrate = 5000000;
+        p.encodings[j].maxFramerate = 30;
         p.encodings[j].priority = 'high';
         p.encodings[j].networkPriority = 'high';
+        p.encodings[j].degradationPreference = 'maintain-framerate';
       }
       s.setParameters(p).catch(function(){});
     }
@@ -344,10 +347,12 @@ function startSharing() {
   btn.disabled = true; btn.textContent = 'Requesting screen access…';
 
   navigator.mediaDevices.getDisplayMedia({
-    video: { frameRate: { ideal: 60, max: 60 }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+    video: { frameRate: { ideal: 30, max: 30 }, width: { ideal: 1280 }, height: { ideal: 720 } },
     audio: { echoCancellation: false, noiseSuppression: false, sampleRate: 48000 }
   }).then(function(stream) {
     activeStream = stream;
+    // 'motion' hint = encoder optimises for moving video not static text
+    try { activeStream.getVideoTracks()[0].contentHint = 'motion'; } catch(e) {}
     activeStream.getVideoTracks()[0].onended = function() { stopSharing(); };
 
     var SAFE = 'ACDEFGHJKLMNPQRTUVWXY3478';
