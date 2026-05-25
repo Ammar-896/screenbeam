@@ -247,6 +247,13 @@ function renderSender() {
     '</div>';
 }
 
+// Strip SDP lines that older TV browsers can't parse
+function stripExtmapMixed(sdp) {
+  return sdp.split('\r\n').filter(function(line) {
+    return line !== 'a=extmap-allow-mixed';
+  }).join('\r\n');
+}
+
 function startSharing() {
   var btn = document.getElementById('startBtn');
   btn.disabled = true;
@@ -297,10 +304,10 @@ function startSharing() {
     activePc.createOffer().then(function(offer) {
       return activePc.setLocalDescription(offer);
     }).then(function() {
-      // Write offer to Firebase
+      // Write offer to Firebase — strip a=extmap-allow-mixed which breaks older TV browsers
       fbPut('/rooms/' + roomId + '/offer', {
         type: activePc.localDescription.type,
-        sdp:  activePc.localDescription.sdp
+        sdp:  stripExtmapMixed(activePc.localDescription.sdp)
       }, function() {
         // Show UI
         btn.style.display = 'none';
