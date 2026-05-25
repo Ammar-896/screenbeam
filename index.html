@@ -87,7 +87,7 @@
   .status-dot.loading { background: var(--accent); animation: pulse 1s infinite; }
   .room-block { margin-top: 28px; padding: 24px; border-radius: 12px; background: rgba(0,229,255,0.03); border: 1px solid rgba(0,229,255,0.12); }
   .room-label { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 8px; }
-  .room-code { font-family: 'JetBrains Mono', monospace; font-size: 32px; font-weight: 700; color: var(--accent); letter-spacing: 6px; text-shadow: 0 0 20px rgba(0,229,255,0.4); margin-bottom: 16px; word-break: break-all; }
+  .room-code { font-family: 'JetBrains Mono', monospace; font-size: 48px; font-weight: 700; color: var(--accent); letter-spacing: 12px; text-shadow: 0 0 20px rgba(0,229,255,0.4); margin-bottom: 16px; word-break: break-all; }
   .room-url { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text); background: rgba(0,0,0,0.4); border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; word-break: break-all; line-height: 1.5; cursor: pointer; transition: border-color 0.2s; }
   .room-url:hover { border-color: var(--accent); }
   .copy-hint { font-size: 10px; color: var(--muted); margin-top: 6px; font-family: 'JetBrains Mono', monospace; }
@@ -98,7 +98,7 @@
   input {
     width: 100%; padding: 14px 16px; background: rgba(0,0,0,0.4); border: 1px solid var(--border);
     border-radius: 10px; color: var(--text); font-family: 'JetBrains Mono', monospace;
-    font-size: 16px; letter-spacing: 3px; text-transform: uppercase; text-align: center;
+    font-size: 24px; letter-spacing: 8px; text-transform: uppercase; text-align: center;
     outline: none; transition: border-color 0.2s, box-shadow 0.2s;
   }
   input::placeholder { letter-spacing: 1px; color: var(--muted); text-transform: none; font-size: 13px; }
@@ -118,6 +118,8 @@
   .rec-dot { width: 10px; height: 10px; background: var(--error); border-radius: 50%; animation: pulse 1.2s infinite; box-shadow: 0 0 8px var(--error); }
   .btn-stop { background: rgba(255,68,102,0.1); border: 1px solid rgba(255,68,102,0.3); color: var(--error); margin-top: 10px; }
   .btn-stop:hover { background: rgba(255,68,102,0.2); border-color: var(--error); }
+  .mobile-note { margin-top: 12px; padding: 12px 16px; border-radius: 8px; background: rgba(123,47,255,0.08); border: 1px solid rgba(123,47,255,0.2); font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); line-height: 1.6; }
+  .mobile-note span { color: var(--accent2); }
 </style>
 </head>
 <body>
@@ -125,15 +127,9 @@
 <div id="app"></div>
 
 <script>
-// ═══════════════════════════════════════════════════════════
-//  STEP 1: Paste your Firebase Realtime Database URL below
-//  Looks like: https://YOUR-PROJECT-default-rtdb.firebaseio.com
-// ═══════════════════════════════════════════════════════════
 var FIREBASE_URL = 'https://screenbeam-2f810-default-rtdb.europe-west1.firebasedatabase.app/';
-// ═══════════════════════════════════════════════════════════
 
-// Polyfill WebRTC prefixes for old TV browsers
-var RTC = window.RTCPeerConnection || window.webkitRTCPeerConnection || window.mozRTCPeerConnection;
+var RTC   = window.RTCPeerConnection || window.webkitRTCPeerConnection || window.mozRTCPeerConnection;
 var SDESC = window.RTCSessionDescription || window.webkitRTCSessionDescription;
 var ICEC  = window.RTCIceCandidate    || window.webkitRTCIceCandidate;
 
@@ -142,15 +138,17 @@ var ICE_CONFIG = {
     { urls: 'stun:stun.l.google.com:19302'  },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' }
-    // No TURN — TURN relays cap bandwidth to ~1Mbps on free servers.
-    // PC + TV on same WiFi connect direct via local ICE candidates anyway.
   ],
   iceTransportPolicy: 'all',
   bundlePolicy: 'max-bundle',
   rtcpMuxPolicy: 'require'
 };
 
-// Global error trap
+// Detect mobile (no getDisplayMedia support)
+var isMobile = /Android|iPhone|iPad|iPod|Opera Mini|IEMobile|WPDesktop/i.test(navigator.userAgent)
+  || !navigator.mediaDevices
+  || typeof navigator.mediaDevices.getDisplayMedia !== 'function';
+
 window.onerror = function(msg, src, line) {
   var app = document.getElementById('app');
   if (app && app.innerHTML.length < 10) {
@@ -163,28 +161,16 @@ window.onerror = function(msg, src, line) {
 };
 
 // ─── FIREBASE REST HELPERS ────────────────────────────────
-// Pure XHR — no WebSocket, no SDK. Works on any TV browser.
 function fbGet(path, cb) {
   var x = new XMLHttpRequest();
   x.open('GET', FIREBASE_URL + path + '.json', true);
-  x.onload  = function() {
-    try { cb(null, JSON.parse(x.responseText)); }
-    catch(e) { cb(null, null); }
-  };
+  x.onload  = function() { try { cb(null, JSON.parse(x.responseText)); } catch(e) { cb(null, null); } };
   x.onerror = function() { cb(new Error('network'), null); };
   x.send();
 }
 function fbPut(path, data, cb) {
   var x = new XMLHttpRequest();
   x.open('PUT', FIREBASE_URL + path + '.json', true);
-  x.setRequestHeader('Content-Type', 'application/json');
-  x.onload  = function() { if (cb) cb(null); };
-  x.onerror = function() { if (cb) cb(new Error('network')); };
-  x.send(JSON.stringify(data));
-}
-function fbPost(path, data, cb) {
-  var x = new XMLHttpRequest();
-  x.open('POST', FIREBASE_URL + path + '.json', true);
   x.setRequestHeader('Content-Type', 'application/json');
   x.onload  = function() { if (cb) cb(null); };
   x.onerror = function() { if (cb) cb(new Error('network')); };
@@ -201,15 +187,11 @@ var hashCode = location.hash.slice(1).toUpperCase().trim();
 var isRecv   = hashCode.length > 0;
 var roomArg  = hashCode;
 
-// Check Firebase URL is configured
 if (FIREBASE_URL.indexOf('YOUR-PROJECT') !== -1) {
   document.getElementById('app').innerHTML =
     '<div style="color:#ff4466;font-family:JetBrains Mono,monospace;padding:40px;max-width:500px;text-align:center">' +
     '<div style="font-size:20px;margin-bottom:16px;color:#00e5ff">ScreenBeam</div>' +
-    '<div style="font-size:13px;line-height:1.8">Firebase not configured yet.<br>' +
-    'Open index.html and replace<br>' +
-    '<span style="color:#7b2fff">YOUR-PROJECT-default-rtdb</span><br>' +
-    'with your Firebase project ID.</div></div>';
+    '<div style="font-size:13px;line-height:1.8">Firebase not configured.</div></div>';
 } else {
   isRecv ? renderReceiver() : renderSender();
 }
@@ -217,13 +199,10 @@ if (FIREBASE_URL.indexOf('YOUR-PROJECT') !== -1) {
 // ═══════════════════════════════
 //  SHARED HELPERS
 // ═══════════════════════════════
-
-// Wait for ICE gathering to finish, then hand back the complete local description.
-// All candidates are embedded in the SDP — zero separate polling needed.
 function waitForICE(pc, callback) {
   if (pc.iceGatheringState === 'complete') { callback(pc.localDescription); return; }
   var done = false;
-  var timer = setTimeout(function() { // no TURN servers so gathering is fast — 3s max
+  var timer = setTimeout(function() {
     if (!done) { done = true; callback(pc.localDescription); }
   }, 3000);
   pc.onicegatheringstatechange = function() {
@@ -233,7 +212,6 @@ function waitForICE(pc, callback) {
   };
 }
 
-// Prefer H264 (hardware-accelerated on most devices) over VP8/VP9
 function preferH264(sdp) {
   var match = sdp.match(/a=rtpmap:(\d+) H264\/90000/);
   if (!match) return sdp;
@@ -244,13 +222,12 @@ function preferH264(sdp) {
   });
 }
 
-// Full SDP sanitizer: strip TV-breaking lines, prefer H264, uncap bitrate
 function sanitizeSDP(sdp) {
   var lines = sdp.split('\r\n');
   var out = []; var inVideo = false;
   for (var i = 0; i < lines.length; i++) {
     var l = lines[i];
-    if (l === 'a=extmap-allow-mixed') continue; // kills old TV browsers
+    if (l === 'a=extmap-allow-mixed') continue;
     if (l.indexOf('m=video') === 0) { inVideo = true; }
     else if (l.indexOf('m=') === 0) { inVideo = false; }
     if (inVideo && (l.indexOf('b=AS:') === 0 || l.indexOf('b=TIAS:') === 0)) continue;
@@ -260,7 +237,6 @@ function sanitizeSDP(sdp) {
   return preferH264(out.join('\r\n'));
 }
 
-// Push 8Mbps + 60fps to encoder after connection
 function boostSenderBitrate(pc) {
   try {
     var senders = pc.getSenders();
@@ -281,29 +257,20 @@ function boostSenderBitrate(pc) {
   } catch(e) {}
 }
 
-// Play video stream — handles srcObject AND old TV browser createObjectURL fallback
 function playStream(vid, stream) {
   var set = false;
-  // Modern API
-  if ('srcObject' in vid) {
-    try { vid.srcObject = stream; set = true; } catch(e) {}
-  }
-  // Old TV browser fallback
+  if ('srcObject' in vid) { try { vid.srcObject = stream; set = true; } catch(e) {} }
   if (!set) {
     try { vid.src = URL.createObjectURL(stream); } catch(e2) {
-      recvSetStatus('error', 'Video API not supported on this browser');
-      return;
+      recvSetStatus('error', 'Video API not supported on this browser'); return;
     }
   }
   vid.muted = true;
   vid.style.display = 'block';
   document.getElementById('app').style.display = 'none';
   document.body.style.background = '#000';
-
-  // Fullscreen before play — TV browsers respond better this way
   var go = vid.requestFullscreen || vid.webkitRequestFullscreen || vid.mozRequestFullScreen || vid.msRequestFullscreen;
   if (go) { try { go.call(vid); } catch(e) {} }
-
   vid.play().then(function() {
     try { vid.muted = false; } catch(e) {}
   }).catch(function() {
@@ -320,12 +287,21 @@ var activePc = null; var activeStream = null; var activeRoomId = null; var sende
 
 function renderSender() {
   var app = document.getElementById('app');
+
+  // Mobile note shown when on phone/tablet
+  var mobileNote = isMobile
+    ? '<div class="mobile-note"><span>Mobile detected:</span> Screen share is not supported in mobile browsers. Your <span>front camera</span> will be used instead — best for casting from a phone to a TV.</div>'
+    : '';
+
   app.innerHTML =
     '<div class="card">' +
       '<div class="logo">ScreenBeam<span class="logo-dot"></span></div>' +
-      '<div class="subtitle">Local Network · WebRTC · Zero Lag</div>' +
+      '<div class="subtitle">Local Network &middot; WebRTC &middot; Zero Lag</div>' +
       '<div class="status-bar" id="senderStatus"><div class="status-dot waiting"></div><span>Ready to cast</span></div>' +
-      '<button class="btn btn-primary" id="startBtn" onclick="startSharing()">&#9654; &nbsp; Share My Screen</button>' +
+      mobileNote +
+      '<button class="btn btn-primary" id="startBtn" style="margin-top:16px" onclick="startSharing()">' +
+        (isMobile ? '&#128247; &nbsp; Share Camera' : '&#9654; &nbsp; Share My Screen') +
+      '</button>' +
       '<div id="shareControls" style="display:none">' +
         '<div class="sharing-indicator"><div class="rec-dot"></div><span>Sharing — stream is live</span></div>' +
         '<div class="room-block" id="roomBlock"></div>' +
@@ -334,8 +310,8 @@ function renderSender() {
       '<div class="divider">how to connect tv</div>' +
       '<div class="instructions">' +
         '<div class="instructions-title">How to connect TV</div>' +
-        '<div class="step"><span class="step-num">1</span><span>Click <strong>Share My Screen</strong> on this device</span></div>' +
-        '<div class="step"><span class="step-num">2</span><span>On TV browser, type: <code style="color:var(--accent);font-family:JetBrains Mono,monospace">screenbeam.vercel.app/#ROOMCODE</code></span></div>' +
+        '<div class="step"><span class="step-num">1</span><span>Click <strong>' + (isMobile ? 'Share Camera' : 'Share My Screen') + '</strong> on this device</span></div>' +
+        '<div class="step"><span class="step-num">2</span><span>On TV browser, go to: <code style="color:var(--accent);font-family:JetBrains Mono,monospace">screenbeam.vercel.app</code> and enter the 2-letter code</span></div>' +
         '<div class="step"><span class="step-num">3</span><span>TV connects instantly via WebRTC</span></div>' +
       '</div>' +
       '<div class="mode-toggle">On the TV? <a onclick="switchToReceiver()">Switch to receiver mode</a></div>' +
@@ -344,19 +320,32 @@ function renderSender() {
 
 function startSharing() {
   var btn = document.getElementById('startBtn');
-  btn.disabled = true; btn.textContent = 'Requesting screen access…';
+  btn.disabled = true;
+  btn.textContent = isMobile ? 'Requesting camera...' : 'Requesting screen access…';
 
-  navigator.mediaDevices.getDisplayMedia({
-    video: { frameRate: { ideal: 30, max: 30 }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-    audio: { echoCancellation: false, noiseSuppression: false, sampleRate: 48000 }
-  }).then(function(stream) {
+  // Mobile: use camera. Desktop: use getDisplayMedia (screen share).
+  var streamPromise;
+  if (isMobile) {
+    streamPromise = navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } },
+      audio: { echoCancellation: false, noiseSuppression: false }
+    });
+  } else {
+    streamPromise = navigator.mediaDevices.getDisplayMedia({
+      video: { frameRate: { ideal: 30, max: 30 }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: { echoCancellation: false, noiseSuppression: false, sampleRate: 48000 }
+    });
+  }
+
+  streamPromise.then(function(stream) {
     activeStream = stream;
     try { activeStream.getVideoTracks()[0].contentHint = 'motion'; } catch(e) {}
     activeStream.getVideoTracks()[0].onended = function() { stopSharing(); };
 
+    // 2-letter room code using unambiguous characters
     var SAFE = 'ACDEFGHJKLMNPQRTUVWXY3478';
-    var roomId = 'SB';
-    for (var ci = 0; ci < 5; ci++) { roomId += SAFE[Math.floor(Math.random() * SAFE.length)]; }
+    var roomId = '';
+    for (var ci = 0; ci < 2; ci++) { roomId += SAFE[Math.floor(Math.random() * SAFE.length)]; }
     activeRoomId = roomId;
     fbDelete('/rooms/' + roomId);
     setStatus('loading', 'Gathering network paths…');
@@ -370,13 +359,11 @@ function startSharing() {
       if (st === 'disconnected' || st === 'failed') { setStatus('live', 'Viewer disconnected — waiting'); updateViewerBadge(false); }
     };
 
-    // Create offer then WAIT for ICE gathering to complete before uploading
     activePc.createOffer().then(function(o) {
       return activePc.setLocalDescription(o);
     }).then(function() {
       setStatus('loading', 'Finding best path… (takes ~2s)');
       waitForICE(activePc, function(localDesc) {
-        // Upload the COMPLETE offer — all ICE candidates already embedded
         fbPut('/rooms/' + roomId + '/offer', {
           type: localDesc.type,
           sdp:  sanitizeSDP(localDesc.sdp)
@@ -385,15 +372,14 @@ function startSharing() {
           document.getElementById('shareControls').style.display = 'block';
           var tvUrl = 'https://screenbeam.vercel.app/#' + roomId;
           document.getElementById('roomBlock').innerHTML =
-            '<div class="room-label">Room code</div>' +
+            '<div class="room-label">Room code — enter on TV</div>' +
             '<div class="room-code">' + roomId + '</div>' +
-            '<div class="room-label">Open this URL on your TV browser</div>' +
+            '<div class="room-label">Or open this URL directly</div>' +
             '<div class="room-url" id="tvUrlBox" onclick="copyUrl(\'' + tvUrl + '\')">' + tvUrl + '</div>' +
             '<div class="copy-hint" id="copyHint">&#8593; tap to copy</div>' +
             '<div class="viewer-badge" id="viewerBadge"><div class="status-dot waiting"></div>Waiting for TV to connect…</div>';
           setStatus('live', 'Live — waiting for viewer');
 
-          // Poll only for the answer — no separate candidate exchange needed
           var answered = false;
           var t = setInterval(function() {
             fbGet('/rooms/' + roomId + '/answer', function(err, data) {
@@ -411,12 +397,19 @@ function startSharing() {
       });
     }).catch(function(e) {
       setStatus('error', 'Offer failed: ' + e.message);
-      btn.disabled = false; btn.textContent = '&#9654; Share My Screen';
+      btn.disabled = false; btn.textContent = isMobile ? '&#128247; Share Camera' : '&#9654; Share My Screen';
     });
 
-  }).catch(function() {
-    btn.disabled = false; btn.textContent = '&#9654; Share My Screen';
-    setStatus('error', 'Screen access denied — try again');
+  }).catch(function(err) {
+    btn.disabled = false;
+    btn.innerHTML = isMobile ? '&#128247; &nbsp; Share Camera' : '&#9654; &nbsp; Share My Screen';
+    if (err && err.name === 'NotAllowedError') {
+      setStatus('error', isMobile ? 'Camera permission denied — check browser settings' : 'Screen access denied — try again');
+    } else if (err && err.name === 'NotFoundError') {
+      setStatus('error', 'No camera found on this device');
+    } else {
+      setStatus('error', 'Access denied — ' + (err ? err.message : 'unknown error'));
+    }
   });
 }
 
@@ -440,8 +433,8 @@ function updateViewerBadge(connected) {
 function copyUrl(url) {
   try { navigator.clipboard.writeText(url).then(function() {
     var h = document.getElementById('copyHint'); if (!h) return;
-    h.textContent = '✓ Copied!'; h.className = 'copy-hint copied';
-    setTimeout(function() { h.textContent = '↑ tap to copy'; h.className = 'copy-hint'; }, 2000);
+    h.textContent = 'Copied!'; h.className = 'copy-hint copied';
+    setTimeout(function() { h.textContent = 'tap to copy'; h.className = 'copy-hint'; }, 2000);
   }); } catch(e) {}
 }
 
@@ -466,11 +459,11 @@ function renderReceiver() {
   app.innerHTML =
     '<div class="card">' +
       '<div class="logo">ScreenBeam<span class="logo-dot"></span></div>' +
-      '<div class="subtitle">Receiver Mode · TV / Display</div>' +
+      '<div class="subtitle">Receiver Mode &middot; TV / Display</div>' +
       '<div class="status-bar" id="recvStatus"><div class="status-dot waiting"></div>' +
         '<span>' + (roomArg ? 'Connecting to ' + roomArg + '...' : 'Enter room code') + '</span></div>' +
       '<div class="input-group">' +
-        '<input type="text" id="codeInput" placeholder="Enter Room Code" maxlength="10"' +
+        '<input type="text" id="codeInput" placeholder="2-letter code" maxlength="2"' +
         ' value="' + roomArg + '" oninput="this.value=this.value.toUpperCase()">' +
       '</div>' +
       '<button class="btn btn-primary" id="connectBtn" onclick="connectReceiver()">&#10230; &nbsp; Connect to Stream</button>' +
@@ -496,7 +489,6 @@ function connectReceiver() {
 
   var attempts = 0; var answering = false;
 
-  // Poll for the sender's complete offer (already has all candidates embedded)
   var offerTimer = setInterval(function() {
     attempts++;
     if (attempts > 60) {
@@ -521,16 +513,11 @@ function connectReceiver() {
 
       recvPc = new RTC(ICE_CONFIG);
 
-      // Handle incoming stream
       recvPc.ontrack = function(e) {
         if (!e.streams || !e.streams[0]) return;
         var stream = e.streams[0];
         var vid = document.getElementById('receiverVideo');
-
-        // Play with srcObject + createObjectURL fallback for old TV browsers
         playStream(vid, stream);
-
-        // When sender stops, go back to connect screen
         var tracks = stream.getTracks();
         for (var t = 0; t < tracks.length; t++) {
           tracks[t].onended = function() {
@@ -557,7 +544,6 @@ function connectReceiver() {
         }
       };
 
-      // Set offer, create answer, wait for ICE, then upload complete answer
       recvPc.setRemoteDescription(new SDESC(offer)).then(function() {
         return recvPc.createAnswer();
       }).then(function(ans) {
@@ -565,7 +551,6 @@ function connectReceiver() {
       }).then(function() {
         recvSetStatus('loading', 'Gathering paths...');
         waitForICE(recvPc, function(localDesc) {
-          // Upload complete answer — all candidates embedded, no separate polling
           fbPut('/rooms/' + roomId + '/answer', {
             type: localDesc.type,
             sdp:  localDesc.sdp
