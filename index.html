@@ -247,11 +247,51 @@ function renderSender() {
     '</div>';
 }
 
-// Strip SDP lines that older TV browsers can't parse
+// Strip SDP lines that older TV browsers can't parse,
+// and boost bitrate/latency settings for smooth screen sharing
 function stripExtmapMixed(sdp) {
-  return sdp.split('\r\n').filter(function(line) {
-    return line !== 'a=extmap-allow-mixed';
-  }).join('\r\n');
+  var lines = sdp.split('\r\n');
+  var out = [];
+  var inVideo = false;
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    // Drop the TV-breaking line
+    if (line === 'a=extmap-allow-mixed') continue;
+    // Track which section we're in
+    if (line.indexOf('m=video') === 0) { inVideo = true; }
+    else if (line.indexOf('m=') === 0) { inVideo = false; }
+    // Replace any existing bandwidth cap with a high one
+    if (inVideo && line.indexOf('b=AS:') === 0) continue;
+    if (inVideo && line.indexOf('b=TIAS:') === 0) continue;
+    out.push(line);
+    // Inject high-bitrate hints right after the video m= line
+    if (line.indexOf('m=video') === 0) {
+      out.push('b=AS:8000');      // 8 Mbps — removes Chrome's default low cap
+      out.push('b=TIAS:8000000'); // same in bps for stricter parsers
+    }
+  }
+  return out.join('\r\n');
+}
+
+// After RTCPeerConnection connects, push max bitrate directly to the encoder
+// This overrides codec defaults for truly smooth 60fps screen sharing
+function boostSenderBitrate(pc) {
+  try {
+    var senders = pc.getSenders();
+    for (var i = 0; i < senders.length; i++) {
+      var sender = senders[i];
+      if (!sender.track || sender.track.kind !== 'video') continue;
+      var params = sender.getParameters();
+      if (!params.encodings) params.encodings = [{}];
+      for (var j = 0; j < params.encodings.length; j++) {
+        params.encodings[j].maxBitrate    = 8000000; // 8 Mbps
+        params.encodings[j].maxFramerate  = 60;
+        params.encodings[j].networkPriority = 'high';
+        params.encodings[j].priority       = 'high';
+      }
+      sender.setParameters(params).catch(function(){});
+    }
+  } catch(e) {}
 }
 
 function startSharing() {
@@ -266,7 +306,10 @@ function startSharing() {
     activeStream = stream;
     activeStream.getVideoTracks()[0].onended = function() { stopSharing(); };
 
-    var roomId = 'SB' + Math.random().toString(36).substr(2,5).toUpperCase();
+    // Only unambiguous characters — no O/0, I/1, S/5, Z/2 lookalikes
+    var SAFE = 'ACDEFGHJKLMNPQRTUVWXY3478';
+    var roomId = 'SB';
+    for (var ci = 0; ci < 5; ci++) { roomId += SAFE[Math.floor(Math.random() * SAFE.length)]; }
     activeRoomId = roomId;
 
     // Clean up any old room data first
@@ -294,6 +337,7 @@ function startSharing() {
       if (state === 'connected') {
         setStatus('live', 'Streaming — connected');
         updateViewerBadge(true);
+        boostSenderBitrate(activePc); // push max bitrate to encoder
       } else if (state === 'disconnected' || state === 'failed') {
         setStatus('live', 'Viewer disconnected — waiting');
         updateViewerBadge(false);
@@ -351,7 +395,7 @@ function startSharing() {
               }
             }
           });
-        }, 1000);
+        }, 300);
         senderTimers.push(answerTimer);
       });
     }).catch(function(e) {
@@ -596,7 +640,7 @@ function connectReceiver() {
               }
             }
           });
-        }, 1000);
+        }, 300);
         recvTimers.push(candidateTimer);
 
         // Stop candidate polling once connected
@@ -607,7 +651,7 @@ function connectReceiver() {
             clearInterval(watchTimer);
             clearInterval(candidateTimer);
           }
-        }, 1000);
+        }, 300);
         recvTimers.push(watchTimer);
 
       }).catch(function(e) {
