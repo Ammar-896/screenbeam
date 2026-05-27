@@ -296,6 +296,9 @@ function startWebRTC(){
     setStatus('error',(err&&err.name==='NotAllowedError')?'Permission denied':'Failed: '+(err&&err.message||err))})}
 
 function boostBitrate(){
+  // Single getParameters->mutate->setParameters. Never call setParameters twice
+  // on the same sender in one tick; the second call reads stale params and
+  // silently overwrites the first with corrupted data, which degrades over time.
   try{var ss=activePc.getSenders();for(var i=0;i<ss.length;i++){var s=ss[i];
     if(!s.track||s.track.kind!=='video')continue;
     var p=s.getParameters();
@@ -306,25 +309,13 @@ function boostBitrate(){
       p.encodings[j].priority='high';
       p.encodings[j].networkPriority='high';}
     s.setParameters(p).catch(function(){});
-    // Prevent silent resolution drops — prefer losing framerate over detail
-    try{s.setParameters(Object.assign({},s.getParameters(),{degradationPreference:'maintain-resolution'}))}catch(e){}
-    // Re-assert capture constraints in case browser relaxed them
-    try{s.track.applyConstraints({frameRate:{ideal:30,min:15},width:{ideal:1920},height:{ideal:1080}})}catch(e){}
   }}catch(e){}}
 
 function monitorStats(){
-  if(!activePc)return;
-  activePc.getStats().then(function(stats){
-    stats.forEach(function(report){
-      if(report.type==='outbound-rtp'&&report.kind==='video'){
-        // If browser is limiting quality due to CPU or bandwidth, try to recover
-        if(report.qualityLimitationReason==='bandwidth'||report.qualityLimitationReason==='cpu'){
-          boostBitrate();
-          // Re-apply capture constraints — sometimes the track itself gets throttled
-          if(activeStream){try{
-            activeStream.getVideoTracks()[0].applyConstraints({frameRate:{ideal:30,min:15}});
-          }catch(e){}}}}});
-  }).catch(function(){});}
+  // No-op: boostBitrate runs on its own 15s timer.
+  // Calling boostBitrate here too caused two concurrent setParameters paths to
+  // fight each other with stale reads, making quality worse not better.
+}
 
 // ─────────────────────────────────────────────
 //  MOBILE CAMERA PATH (Android)
