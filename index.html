@@ -227,8 +227,13 @@ function setStatus(type,msg){
 // ─────────────────────────────────────────────
 var RTC=window.RTCPeerConnection||window.webkitRTCPeerConnection;
 var SDESC=window.RTCSessionDescription||window.webkitRTCSessionDescription;
-var ICE_CONFIG={iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}],
-  iceTransportPolicy:'all',bundlePolicy:'max-bundle',rtcpMuxPolicy:'require'};
+var ICE_CONFIG={iceServers:[
+    {urls:'stun:stun.l.google.com:19302'},
+    {urls:'stun:stun1.l.google.com:19302'},
+    {urls:'stun:stun.cloudflare.com:3478'}
+  ],
+  iceTransportPolicy:'all',bundlePolicy:'max-bundle',rtcpMuxPolicy:'require',
+  iceCandidatePoolSize:10};
 
 function waitForICE(pc,cb){
   if(pc.iceGatheringState==='complete'){cb(pc.localDescription);return}
@@ -257,7 +262,7 @@ function startWebRTC(){
     return navigator.mediaDevices.getDisplayMedia({video:true});
   }).then(function(stream){
     activeStream=stream;
-    try{stream.getVideoTracks()[0].contentHint='motion'}catch(e){}
+    try{stream.getVideoTracks()[0].contentHint='detail'}catch(e){}
     stream.getVideoTracks()[0].onended=function(){stopSharing()};
     var roomId=makeRoomId();activeRoomId=roomId;
     fbDelete('/rooms/'+roomId);
@@ -266,7 +271,14 @@ function startWebRTC(){
     stream.getTracks().forEach(function(t){activePc.addTrack(t,stream)});
     activePc.onconnectionstatechange=function(){
       var s=activePc.connectionState;
-      if(s==='connected'){setStatus('live','Streaming via WebRTC');updateViewerBadge(true);boostBitrate()}
+      if(s==='connected'){
+        setStatus('live','Streaming via WebRTC');updateViewerBadge(true);boostBitrate();
+        // Re-enforce bitrate every 15s — GCC will throttle quality otherwise
+        var enforceT=setInterval(function(){if(activePc&&activePc.connectionState==='connected')boostBitrate()},15000);
+        senderTimers.push(enforceT);
+        // Monitor quality limitations every 30s and recover if degraded
+        var statsT=setInterval(function(){monitorStats()},30000);
+        senderTimers.push(statsT);}
       if(s==='disconnected'||s==='failed'){setStatus('live','Viewer disconnected');updateViewerBadge(false)}};
     activePc.createOffer().then(function(o){return activePc.setLocalDescription(o)})
     .then(function(){
@@ -285,9 +297,34 @@ function startWebRTC(){
 
 function boostBitrate(){
   try{var ss=activePc.getSenders();for(var i=0;i<ss.length;i++){var s=ss[i];
-    if(!s.track||s.track.kind!=='video')continue;var p=s.getParameters();if(!p.encodings)p.encodings=[{}];
-    for(var j=0;j<p.encodings.length;j++){p.encodings[j].maxBitrate=8000000;p.encodings[j].maxFramerate=30}
-    s.setParameters(p).catch(function(){})}}catch(e){}}
+    if(!s.track||s.track.kind!=='video')continue;
+    var p=s.getParameters();
+    if(!p.encodings||!p.encodings.length)p.encodings=[{}];
+    for(var j=0;j<p.encodings.length;j++){
+      p.encodings[j].maxBitrate=8000000;
+      p.encodings[j].maxFramerate=30;
+      p.encodings[j].priority='high';
+      p.encodings[j].networkPriority='high';}
+    s.setParameters(p).catch(function(){});
+    // Prevent silent resolution drops — prefer losing framerate over detail
+    try{s.setParameters(Object.assign({},s.getParameters(),{degradationPreference:'maintain-resolution'}))}catch(e){}
+    // Re-assert capture constraints in case browser relaxed them
+    try{s.track.applyConstraints({frameRate:{ideal:30,min:15},width:{ideal:1920},height:{ideal:1080}})}catch(e){}
+  }}catch(e){}}
+
+function monitorStats(){
+  if(!activePc)return;
+  activePc.getStats().then(function(stats){
+    stats.forEach(function(report){
+      if(report.type==='outbound-rtp'&&report.kind==='video'){
+        // If browser is limiting quality due to CPU or bandwidth, try to recover
+        if(report.qualityLimitationReason==='bandwidth'||report.qualityLimitationReason==='cpu'){
+          boostBitrate();
+          // Re-apply capture constraints — sometimes the track itself gets throttled
+          if(activeStream){try{
+            activeStream.getVideoTracks()[0].applyConstraints({frameRate:{ideal:30,min:15}});
+          }catch(e){}}}}});
+  }).catch(function(){});}
 
 // ─────────────────────────────────────────────
 //  MOBILE CAMERA PATH (Android)
