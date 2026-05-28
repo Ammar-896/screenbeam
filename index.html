@@ -182,7 +182,8 @@ function waitForICE(pc,cb){
 function preferH264(sdp){
   // Normalise line endings — Chrome uses \r\n, some browsers just \n
   var sep=sdp.indexOf('\r\n')>-1?'\r\n':'\n';
-  var lines=sdp.split(sep);
+  // Strip a=extmap-allow-mixed — Chrome adds it but Firefox/Safari choke on it (expects 2 fields)
+  var lines=sdp.split(sep).filter(function(l){return l!=='a=extmap-allow-mixed'});
   var mIdx=-1;
   for(var i=0;i<lines.length;i++){if(lines[i].indexOf('m=video')===0){mIdx=i;break}}
   if(mIdx===-1)return sdp;
