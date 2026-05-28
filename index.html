@@ -94,15 +94,14 @@
 // ─────────────────────────────────────────────
 var FIREBASE_URL='https://screenbeam-2f810-default-rtdb.europe-west1.firebasedatabase.app/';
 
-// ── LAN-optimised quality targets ───────────
-// On the same WiFi/LAN the media path never leaves the local network,
-// so we can push much higher bitrates without worrying about internet bandwidth.
-var VIDEO_MAXBITRATE = 100000000;   // 100 Mbps — near-lossless on LAN
-var AUDIO_MAXBITRATE = 320000;      // 320 kbps uncompressed-grade audio
-var VIDEO_SDP_AS     = 100000;      // kbps  (b=AS SDP line)
-var VIDEO_SDP_TIAS   = 100000000;   // bps   (b=TIAS SDP line)
-var BITRATE_ENFORCE_MS = 8000;      // re-push bitrate params every 8s
-var ICE_GATHER_TIMEOUT = 1500;      // LAN ICE is fast — no need to wait 3s
+// LAN quality — H264 (hardware encoded), 1080p60, 8 Mbps
+// H264 uses the GPU encoder on virtually every device.
+// VP9 is software-only on most machines → was causing the 2fps issue.
+var VIDEO_MAXBITRATE  = 8000000;   // 8 Mbps — crisp 1080p60 on LAN
+var AUDIO_MAXBITRATE  = 320000;    // 320 kbps
+var VIDEO_SDP_AS      = 8000;      // kbps  (b=AS SDP line)
+var VIDEO_SDP_TIAS    = 8000000;   // bps   (b=TIAS SDP line)
+var ICE_GATHER_TIMEOUT= 1500;      // LAN ICE gathers fast
 
 var hashCode=location.hash.slice(1).toUpperCase().trim();
 var isRecv=hashCode.length>0;
@@ -117,10 +116,6 @@ function fbGet(p,cb){var x=new XMLHttpRequest();x.open('GET',FIREBASE_URL+p+'.js
   x.onload=function(){try{cb(null,JSON.parse(x.responseText))}catch(e){cb(null,null)}};
   x.onerror=function(){cb(new Error('net'),null)};x.send()}
 function fbPut(p,data,cb){var x=new XMLHttpRequest();x.open('PUT',FIREBASE_URL+p+'.json',true);
-  x.setRequestHeader('Content-Type','application/json');
-  x.onload=function(){if(cb)cb(null)};x.onerror=function(){if(cb)cb(new Error('net'))};
-  x.send(JSON.stringify(data))}
-function fbPatch(p,data,cb){var x=new XMLHttpRequest();x.open('PATCH',FIREBASE_URL+p+'.json',true);
   x.setRequestHeader('Content-Type','application/json');
   x.onload=function(){if(cb)cb(null)};x.onerror=function(){if(cb)cb(new Error('net'))};
   x.send(JSON.stringify(data))}
@@ -149,8 +144,8 @@ function renderSender(){
       '<div class="status-bar" id="senderStatus"><div class="status-dot waiting"></div><span>Ready to cast</span></div>'+
       '<div id="modeContent">'+
         '<button class="btn btn-primary" id="startBtn" onclick="startWebRTC()">▶ &nbsp;Share My Screen</button>'+
-        '<div class="notice info"><strong>LAN Mode — Maximum Quality</strong>'+
-          'Direct P2P stream over your local network. 100 Mbps ceiling · 60fps · zero degradation.</div>'+
+        '<div class="notice info"><strong>LAN Mode — H264 Hardware Encode</strong>'+
+          'Direct P2P stream over your local network. H264 GPU encode · 8 Mbps · 1080p60.</div>'+
       '</div>'+
       '<div id="shareControls" style="display:none">'+
         '<div class="sharing-indicator"><div class="rec-dot"></div><span id="sharingLabel">Streaming</span></div>'+
@@ -168,9 +163,6 @@ function setStatus(type,msg){
 
 // ─────────────────────────────────────────────
 //  ICE CONFIG
-//  On LAN the host candidates (192.168.x.x / 10.x.x.x) are used directly.
-//  STUN servers are kept as a fallback but LAN connections won't need them.
-//  iceCandidatePoolSize=20 pre-gathers more local candidates for faster setup.
 // ─────────────────────────────────────────────
 var RTC=window.RTCPeerConnection||window.webkitRTCPeerConnection;
 var SDESC=window.RTCSessionDescription||window.webkitRTCSessionDescription;
@@ -180,13 +172,12 @@ var ICE_CONFIG={
     {urls:'stun:stun1.l.google.com:19302'},
     {urls:'stun:stun.cloudflare.com:3478'}
   ],
-  iceTransportPolicy:'all',       // 'all' allows host (LAN) candidates — never use 'relay'
+  iceTransportPolicy:'all',
   bundlePolicy:'max-bundle',
   rtcpMuxPolicy:'require',
-  iceCandidatePoolSize:20         // pre-gather more candidates for faster LAN pairing
+  iceCandidatePoolSize:20
 };
 
-// Reduced timeout — on LAN ICE gathers in <500ms typically
 function waitForICE(pc,cb){
   if(pc.iceGatheringState==='complete'){cb(pc.localDescription);return}
   var done=false;
@@ -198,7 +189,6 @@ function waitForICE(pc,cb){
 //  SDP HELPERS
 // ─────────────────────────────────────────────
 function sanitizeSDP(sdp){
-  // Strip any existing bandwidth caps in the video section and replace with our target.
   var lines=sdp.split('\r\n'),out=[],inV=false;
   for(var i=0;i<lines.length;i++){var l=lines[i];
     if(l==='a=extmap-allow-mixed')continue;
@@ -211,9 +201,6 @@ function sanitizeSDP(sdp){
   return out.join('\r\n')}
 
 function preferCodec(sdp,codec){
-  // Move the preferred codec to the top of the video m-line payload order.
-  // VP9 gives noticeably better quality than VP8/H264 at the same bitrate,
-  // especially for screen content (sharp text, high contrast edges).
   var lines=sdp.split('\r\n');
   var mIdx=-1;
   for(var i=0;i<lines.length;i++){if(lines[i].indexOf('m=video')===0){mIdx=i;break}}
@@ -237,15 +224,11 @@ function startWebRTC(){
   var btn=document.getElementById('startBtn');btn.disabled=true;btn.textContent='Requesting…';
   setStatus('loading','Requesting screen access…');
 
-  // Ask for the best quality the OS/browser will offer.
-  // frameRate 60 ideal, up to 4K resolution, resizeMode:'none' prevents silent downscaling.
-  // Audio: disable all processing (echo cancel / noise suppress / gain) for clean system audio.
   navigator.mediaDevices.getDisplayMedia({
     video:{
       frameRate:{ideal:60,max:60},
-      width:{ideal:3840},
-      height:{ideal:2160},
-      resizeMode:'none'
+      width:{ideal:1920},       // 1080p — manageable for H264 encoder
+      height:{ideal:1080},      // resizeMode omitted → browser can adapt if needed
     },
     audio:{
       echoCancellation:false,
@@ -255,12 +238,11 @@ function startWebRTC(){
       channelCount:2
     }
   }).catch(function(){
-    // Fallback: accept browser defaults if constraints are rejected
     return navigator.mediaDevices.getDisplayMedia({video:true,audio:true});
   }).then(function(stream){
     activeStream=stream;
     var vt=stream.getVideoTracks()[0];
-    try{vt.contentHint='detail'}catch(e){}  // hint: UI/text, not motion video
+    try{vt.contentHint='detail'}catch(e){}
     vt.onended=function(){stopSharing()};
 
     var roomId=makeRoomId();activeRoomId=roomId;
@@ -273,13 +255,10 @@ function startWebRTC(){
     activePc.onconnectionstatechange=function(){
       var s=activePc.connectionState;
       if(s==='connected'){
-        setStatus('live','Streaming · LAN · 100 Mbps');
+        setStatus('live','Streaming · LAN · H264');
         updateViewerBadge(true);
-        boostBitrate();
-        var enforceT=setInterval(function(){
-          if(activePc&&activePc.connectionState==='connected')boostBitrate()
-        },BITRATE_ENFORCE_MS);
-        senderTimers.push(enforceT);}
+        boostBitrate(); // once on connect — no repeated interval
+      }
       if(s==='disconnected'||s==='failed'){
         setStatus('warn','Viewer disconnected');updateViewerBadge(false)}};
 
@@ -287,8 +266,8 @@ function startWebRTC(){
     .then(function(o){return activePc.setLocalDescription(o)})
     .then(function(){
       waitForICE(activePc,function(ld){
-        // VP9 first → best quality for screen content; falls back to browser default if unsupported
-        var sdp=preferCodec(sanitizeSDP(ld.sdp),'VP9');
+        // H264 first → GPU-accelerated on virtually every device
+        var sdp=preferCodec(sanitizeSDP(ld.sdp),'H264');
         fbPut('/rooms/'+roomId+'/offer',{type:ld.type,sdp:sdp,mode:'webrtc'},function(){
           showRoomUI(roomId);
           setStatus('live','Live — waiting for viewer');
@@ -305,8 +284,8 @@ function startWebRTC(){
     setStatus('error',(err&&err.name==='NotAllowedError')?'Permission denied':'Failed: '+(err&&err.message||err))})}
 
 function boostBitrate(){
-  // One getParameters → mutate → setParameters per sender.
-  // Never call setParameters twice on the same sender in one tick (stale read → quality regression).
+  // Called once after connection — sets a sane bitrate ceiling.
+  // NOT called on an interval; repeated setParameters calls reset the encoder.
   try{
     var ss=activePc.getSenders();
     for(var i=0;i<ss.length;i++){
@@ -315,13 +294,12 @@ function boostBitrate(){
       if(!p.encodings||!p.encodings.length)p.encodings=[{}];
       for(var j=0;j<p.encodings.length;j++){
         if(s.track.kind==='video'){
-          p.encodings[j].maxBitrate          = VIDEO_MAXBITRATE; // 100 Mbps
-          p.encodings[j].maxFramerate        = 60;
-          p.encodings[j].priority            = 'high';
-          p.encodings[j].networkPriority     = 'high';
-          // REMOVED: p.encodings[j].degradationPreference = 'disabled'; (This was breaking setParameters)
-        } else if(s.track.kind==='audio'){
-          p.encodings[j].maxBitrate      = AUDIO_MAXBITRATE; // 320 kbps
+          p.encodings[j].maxBitrate      = VIDEO_MAXBITRATE;
+          p.encodings[j].maxFramerate    = 60;
+          p.encodings[j].priority        = 'high';
+          p.encodings[j].networkPriority = 'high';
+        }else if(s.track.kind==='audio'){
+          p.encodings[j].maxBitrate      = AUDIO_MAXBITRATE;
           p.encodings[j].priority        = 'high';
           p.encodings[j].networkPriority = 'high';
         }
@@ -420,26 +398,44 @@ function connectReceiver(){
 function connectWebRTC(roomId,offer){
   recvSetStatus('loading','WebRTC — connecting…');
   recvPc=new RTC(ICE_CONFIG);
+
   var vid=document.createElement('video');
   vid.style.cssText='position:fixed;inset:0;width:100vw;height:100vh;object-fit:contain;background:#000;z-index:100;cursor:pointer';
-  vid.autoplay=true;vid.playsInline=true;vid.muted=false;  // ← muted=false from the start
-  var streamSet=false;                                       // ← one-shot guard
+  vid.autoplay=true;
+  vid.playsInline=true;
+  vid.muted=false; // unmuted from the start — no mid-play toggle
+
+  // FIX: one-shot guard — ontrack fires once per track (video + audio).
+  // Without this, the second firing resets srcObject and calls play() again,
+  // which interrupts the first play and leaves the video showing a placeholder.
+  var streamSet=false;
+
   recvPc.ontrack=function(e){
-    if(streamSet||!e.streams||!e.streams[0])return;         // ← skip duplicate firings
+    if(streamSet||!e.streams||!e.streams[0])return;
     streamSet=true;
+
     var stream=e.streams[0];
     document.body.appendChild(vid);
     document.getElementById('app').style.display='none';
     vid.srcObject=stream;
-    vid.play().catch(function(){vid.muted=true;vid.play()});// ← fallback: mute if blocked
+
+    // Try unmuted first; if autoplay policy blocks it, fall back to muted
+    vid.play().catch(function(){
+      vid.muted=true;
+      vid.play().catch(function(){});
+    });
+
     var go=vid.requestFullscreen||vid.webkitRequestFullscreen;
     if(go)try{go.call(vid)}catch(e){}
+
     vid.onclick=function(){
       document.body.removeChild(vid);
       document.getElementById('app').style.display='flex';
       renderReceiver()}};
+
   recvPc.onconnectionstatechange=function(){
     if(recvPc&&recvPc.connectionState==='failed'){recvSetStatus('error','Connection failed')}};
+
   recvPc.setRemoteDescription(new SDESC(offer))
   .then(function(){return recvPc.createAnswer()})
   .then(function(a){return recvPc.setLocalDescription(a)})
