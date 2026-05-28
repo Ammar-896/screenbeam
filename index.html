@@ -319,9 +319,7 @@ function boostBitrate(){
           p.encodings[j].maxFramerate        = 60;
           p.encodings[j].priority            = 'high';
           p.encodings[j].networkPriority     = 'high';
-          // 'disabled' = never degrade resolution OR framerate — browser must maintain both.
-          // GCC (congestion control) will still pace traffic but won't drop quality.
-          p.encodings[j].degradationPreference = 'disabled';
+          // REMOVED: p.encodings[j].degradationPreference = 'disabled'; (This was breaking setParameters)
         } else if(s.track.kind==='audio'){
           p.encodings[j].maxBitrate      = AUDIO_MAXBITRATE; // 320 kbps
           p.encodings[j].priority        = 'high';
