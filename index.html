@@ -84,26 +84,17 @@
 <body>
 <div id="app"></div>
 <script>
-// ─────────────────────────────────────────────
-//  CONFIG
-// ─────────────────────────────────────────────
 var FIREBASE_URL='https://screenbeam-2f810-default-rtdb.europe-west1.firebasedatabase.app/';
-
-// 720p30 + 3 Mbps — light enough for any H264 encoder to hit 30fps comfortably.
-// Bump VIDEO_MAXBITRATE / constraints if your hardware can handle more.
-var VIDEO_MAXBITRATE  = 3000000;   // 3 Mbps
-var AUDIO_MAXBITRATE  = 128000;    // 128 kbps
-var ICE_GATHER_TIMEOUT= 1500;
+var VIDEO_MAXBITRATE = 3000000;
+var AUDIO_MAXBITRATE = 128000;
+var ICE_GATHER_TIMEOUT = 1500;
 
 var hashCode=location.hash.slice(1).toUpperCase().trim();
 var isRecv=hashCode.length>0;
 var roomArg=hashCode;
-
 isRecv?renderReceiver():renderSender();
 
-// ─────────────────────────────────────────────
-//  FIREBASE HELPERS
-// ─────────────────────────────────────────────
+// --- FIREBASE ---
 function fbGet(p,cb){var x=new XMLHttpRequest();x.open('GET',FIREBASE_URL+p+'.json',true);
   x.onload=function(){try{cb(null,JSON.parse(x.responseText))}catch(e){cb(null,null)}};
   x.onerror=function(){cb(new Error('net'),null)};x.send()}
@@ -113,17 +104,13 @@ function fbPut(p,data,cb){var x=new XMLHttpRequest();x.open('PUT',FIREBASE_URL+p
   x.send(JSON.stringify(data))}
 function fbDelete(p){var x=new XMLHttpRequest();x.open('DELETE',FIREBASE_URL+p+'.json',true);x.send()}
 
-// ─────────────────────────────────────────────
-//  ROOM CODE
-// ─────────────────────────────────────────────
+// --- ROOM ID ---
 function makeRoomId(){
   var SAFE='ACDEFGHJKLMNPQRTUVWXY3478';var r='';
   for(var i=0;i<4;i++)r+=SAFE[Math.floor(Math.random()*SAFE.length)];
   return r}
 
-// ─────────────────────────────────────────────
-//  SENDER UI
-// ─────────────────────────────────────────────
+// --- SENDER UI ---
 var senderTimers=[];
 var activePc=null,activeStream=null,activeRoomId=null;
 
@@ -131,19 +118,19 @@ function renderSender(){
   document.getElementById('app').innerHTML=
     '<div class="card">'+
       '<div class="logo">ScreenBeam<span class="logo-dot"></span></div>'+
-      '<div class="subtitle">Cast · WebRTC · LAN</div>'+
+      '<div class="subtitle">Cast / WebRTC / LAN</div>'+
       '<div class="status-bar" id="senderStatus"><div class="status-dot waiting"></div><span>Ready to cast</span></div>'+
       '<div id="modeContent">'+
-        '<button class="btn btn-primary" id="startBtn" onclick="startWebRTC()">▶ &nbsp;Share My Screen</button>'+
-        '<div class="notice info"><strong>LAN Mode — H264 · 720p30 · 3 Mbps</strong>'+
-          'Direct P2P stream over your local network. Low CPU · smooth framerate.</div>'+
+        '<button class="btn btn-primary" id="startBtn" onclick="startWebRTC()">&#9654; &nbsp;Share My Screen</button>'+
+        '<div class="notice info"><strong>LAN Mode - H264 720p30 3 Mbps</strong>'+
+          'Direct P2P stream over your local network. H264 GPU encode, low CPU.</div>'+
       '</div>'+
       '<div id="shareControls" style="display:none">'+
         '<div class="sharing-indicator"><div class="rec-dot"></div><span>Streaming</span></div>'+
         '<div class="room-block" id="roomBlock"></div>'+
-        '<button class="btn btn-stop" onclick="stopSharing()">■ &nbsp;Stop</button>'+
+        '<button class="btn btn-stop" onclick="stopSharing()">&#9632; &nbsp;Stop</button>'+
       '</div>'+
-      '<div class="mode-toggle">On the TV? <a onclick="switchToReceiver()">Receiver mode →</a></div>'+
+      '<div class="mode-toggle">On the TV? <a onclick="switchToReceiver()">Receiver mode</a></div>'+
     '</div>'}
 
 function setStatus(type,msg){
@@ -151,21 +138,12 @@ function setStatus(type,msg){
   b.querySelector('.status-dot').className='status-dot '+type;
   b.querySelector('span').textContent=msg}
 
-// ─────────────────────────────────────────────
-//  ICE CONFIG
-// ─────────────────────────────────────────────
+// --- ICE ---
 var RTC=window.RTCPeerConnection||window.webkitRTCPeerConnection;
 var SDESC=window.RTCSessionDescription||window.webkitRTCSessionDescription;
 var ICE_CONFIG={
-  iceServers:[
-    {urls:'stun:stun.l.google.com:19302'},
-    {urls:'stun:stun1.l.google.com:19302'}
-  ],
-  iceTransportPolicy:'all',
-  bundlePolicy:'max-bundle',
-  rtcpMuxPolicy:'require',
-  iceCandidatePoolSize:10
-};
+  iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'}],
+  iceTransportPolicy:'all',bundlePolicy:'max-bundle',rtcpMuxPolicy:'require',iceCandidatePoolSize:10};
 
 function waitForICE(pc,cb){
   if(pc.iceGatheringState==='complete'){cb(pc.localDescription);return}
@@ -174,29 +152,29 @@ function waitForICE(pc,cb){
   pc.onicegatheringstatechange=function(){
     if(pc.iceGatheringState==='complete'&&!done){done=true;clearTimeout(t);cb(pc.localDescription)}}}
 
-// ─────────────────────────────────────────────
-//  SDP — prefer H264, strip nothing else
-//  We do NOT inject b=AS/b=TIAS lines — they were confusing the encoder.
-//  Bitrate is controlled purely via setParameters after connect.
-// ─────────────────────────────────────────────
-function preferH264(sdp){
-  // Normalise line endings — Chrome uses \r\n, some browsers just \n
+// --- SDP HELPERS ---
+// Chrome injects a=extmap-allow-mixed as a bare line (no URI or value after it).
+// The WebRTC spec requires at least 2 fields on that line.
+// Firefox and Safari both hard-reject it with "Failed to parse SessionDescription".
+// Strip it from every SDP we send, both offer (sender) and answer (receiver).
+function cleanSDP(sdp){
   var sep=sdp.indexOf('\r\n')>-1?'\r\n':'\n';
-  // Strip a=extmap-allow-mixed — Chrome adds it but Firefox/Safari choke on it (expects 2 fields)
-  var lines=sdp.split(sep).filter(function(l){return l!=='a=extmap-allow-mixed'});
+  return sdp.split(sep).filter(function(l){
+    return l.trim()!=='a=extmap-allow-mixed';
+  }).join(sep)}
+
+function preferH264(sdp){
+  var sep=sdp.indexOf('\r\n')>-1?'\r\n':'\n';
+  var lines=sdp.split(sep);
   var mIdx=-1;
   for(var i=0;i<lines.length;i++){if(lines[i].indexOf('m=video')===0){mIdx=i;break}}
   if(mIdx===-1)return sdp;
-
-  // Collect H264 payload types
   var pts=[];
   for(var i=0;i<lines.length;i++){
     var l=lines[i];
     if(l.indexOf('a=rtpmap:')===0&&l.toLowerCase().indexOf('h264')>-1){
       pts.push(l.split(':')[1].split(' ')[0])}}
-  if(!pts.length)return sdp; // H264 not offered — leave as-is
-
-  // Reorder m=video payload list: H264 pts first
+  if(!pts.length)return sdp;
   var mp=lines[mIdx].split(' ');
   var reordered=[mp[0],mp[1],mp[2]];
   pts.forEach(function(pt){reordered.push(pt)});
@@ -204,15 +182,11 @@ function preferH264(sdp){
   lines[mIdx]=reordered.join(' ');
   return lines.join(sep)}
 
-// ─────────────────────────────────────────────
-//  WEBRTC SENDER
-// ─────────────────────────────────────────────
+// --- SENDER WEBRTC ---
 function startWebRTC(){
   var btn=document.getElementById('startBtn');
-  btn.disabled=true;btn.textContent='Requesting…';
-  setStatus('loading','Requesting screen access…');
-
-  // 720p30 — well within H264 hardware encoder limits on any machine
+  btn.disabled=true;btn.textContent='Requesting...';
+  setStatus('loading','Requesting screen access...');
   navigator.mediaDevices.getDisplayMedia({
     video:{frameRate:{ideal:30,max:30},width:{ideal:1280},height:{ideal:720}},
     audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false,sampleRate:48000,channelCount:2}
@@ -223,34 +197,29 @@ function startWebRTC(){
     var vt=stream.getVideoTracks()[0];
     try{vt.contentHint='detail'}catch(e){}
     vt.onended=function(){stopSharing()};
-
     var roomId=makeRoomId();activeRoomId=roomId;
     fbDelete('/rooms/'+roomId);
-    setStatus('loading','Gathering LAN paths…');
-
+    setStatus('loading','Gathering LAN paths...');
     activePc=new RTC(ICE_CONFIG);
     stream.getTracks().forEach(function(t){activePc.addTrack(t,stream)});
-
     activePc.onconnectionstatechange=function(){
       var s=activePc.connectionState;
       if(s==='connected'){
-        setStatus('live','Streaming · LAN · H264 720p');
+        setStatus('live','Streaming - LAN - H264 720p');
         updateViewerBadge(true);
-        // Set bitrate once — never again (repeated calls reset encoder)
         setTimeout(function(){applyBitrate()},500);
       }
       if(s==='disconnected'||s==='failed'){
-        setStatus('warn','Viewer disconnected');
-        updateViewerBadge(false)}};
-
+        setStatus('warn','Viewer disconnected');updateViewerBadge(false)}};
     activePc.createOffer()
     .then(function(o){return activePc.setLocalDescription(o)})
     .then(function(){
       waitForICE(activePc,function(ld){
-        var sdp=preferH264(ld.sdp);
+        // cleanSDP strips a=extmap-allow-mixed so Firefox/Safari can parse it
+        var sdp=preferH264(cleanSDP(ld.sdp));
         fbPut('/rooms/'+roomId+'/offer',{type:ld.type,sdp:sdp,mode:'webrtc'},function(){
           showRoomUI(roomId);
-          setStatus('live','Live — waiting for viewer');
+          setStatus('live','Live - waiting for viewer');
           var answered=false;
           var t=setInterval(function(){
             fbGet('/rooms/'+roomId+'/answer',function(err,data){
@@ -260,11 +229,10 @@ function startWebRTC(){
                   .catch(function(e){setStatus('error',e.message)})}})},400);
           senderTimers.push(t)})})})
   }).catch(function(err){
-    btn.disabled=false;btn.innerHTML='▶ &nbsp;Share My Screen';
+    btn.disabled=false;btn.innerHTML='&#9654; &nbsp;Share My Screen';
     setStatus('error',(err&&err.name==='NotAllowedError')?'Permission denied':'Failed: '+(err&&err.message||err))})}
 
 function applyBitrate(){
-  // Called once, 500ms after connect to let the encoder stabilise first
   if(!activePc)return;
   try{
     activePc.getSenders().forEach(function(s){
@@ -273,48 +241,39 @@ function applyBitrate(){
       if(!p.encodings||!p.encodings.length)p.encodings=[{}];
       p.encodings.forEach(function(e){
         if(s.track.kind==='video'){
-          e.maxBitrate   =VIDEO_MAXBITRATE;
-          e.maxFramerate =30;
-          e.priority     ='high';
-          e.networkPriority='high';
+          e.maxBitrate=VIDEO_MAXBITRATE;e.maxFramerate=30;
+          e.priority='high';e.networkPriority='high';
         }else{
-          e.maxBitrate   =AUDIO_MAXBITRATE;
-          e.priority     ='high';
-          e.networkPriority='high';
-        }
-      });
-      s.setParameters(p).catch(function(){});
-    });
-  }catch(e){}}
+          e.maxBitrate=AUDIO_MAXBITRATE;
+          e.priority='high';e.networkPriority='high';
+        }});
+      s.setParameters(p).catch(function(){});});}catch(e){}}
 
-// ─────────────────────────────────────────────
-//  SHARED SENDER HELPERS
-// ─────────────────────────────────────────────
 function showRoomUI(roomId){
   var btn=document.getElementById('startBtn');if(btn)btn.style.display='none';
   var mc=document.getElementById('modeContent');if(mc)mc.style.display='none';
   document.getElementById('shareControls').style.display='block';
   var tvUrl='https://screenbeam.vercel.app/#'+roomId;
   document.getElementById('roomBlock').innerHTML=
-    '<div class="room-label">Room code — enter on receiver</div>'+
+    '<div class="room-label">Room code</div>'+
     '<div class="room-code">'+roomId+'</div>'+
-    '<div class="room-label">Or open directly on the TV</div>'+
+    '<div class="room-label">Or open on the TV</div>'+
     '<div class="room-url" id="tvUrlBox" onclick="copyUrl(\''+tvUrl+'\')">'+tvUrl+'</div>'+
-    '<div class="copy-hint" id="copyHint">↑ tap to copy</div>'+
-    '<div class="viewer-badge" id="viewerBadge"><div class="status-dot waiting"></div>Waiting for receiver…</div>'}
+    '<div class="copy-hint" id="copyHint">tap to copy</div>'+
+    '<div class="viewer-badge" id="viewerBadge"><div class="status-dot waiting"></div>Waiting for receiver...</div>'}
 
 function updateViewerBadge(connected){
   var b=document.getElementById('viewerBadge');if(!b)return;
   b.className='viewer-badge'+(connected?' connected':'');
   b.innerHTML=connected
-    ?'<div class="status-dot live"></div>Receiver connected · LAN P2P'
-    :'<div class="status-dot waiting"></div>Waiting for receiver…'}
+    ?'<div class="status-dot live"></div>Receiver connected - LAN P2P'
+    :'<div class="status-dot waiting"></div>Waiting for receiver...'}
 
 function copyUrl(url){
   try{navigator.clipboard.writeText(url).then(function(){
     var h=document.getElementById('copyHint');if(!h)return;
     h.textContent='Copied!';h.className='copy-hint copied';
-    setTimeout(function(){h.textContent='↑ tap to copy';h.className='copy-hint'},2000)})}catch(e){}}
+    setTimeout(function(){h.textContent='tap to copy';h.className='copy-hint'},2000)})}catch(e){}}
 
 function stopSharing(){
   senderTimers.forEach(function(t){clearInterval(t)});senderTimers=[];
@@ -327,25 +286,23 @@ function switchToReceiver(){
   var r=prompt('Enter Room Code:');
   if(r){location.hash=r.trim().toUpperCase();location.reload()}}
 
-// ─────────────────────────────────────────────
-//  RECEIVER
-// ─────────────────────────────────────────────
+// --- RECEIVER ---
 var recvPc=null,recvTimers=[];
 
 function renderReceiver(){
   document.getElementById('app').innerHTML=
     '<div class="card">'+
       '<div class="logo">ScreenBeam<span class="logo-dot"></span></div>'+
-      '<div class="subtitle">Receiver Mode · TV / Display</div>'+
+      '<div class="subtitle">Receiver Mode / TV / Display</div>'+
       '<div class="status-bar" id="recvStatus"><div class="status-dot waiting"></div>'+
-        '<span>'+(roomArg?'Connecting to '+roomArg+'…':'Enter room code')+'</span></div>'+
+        '<span>'+(roomArg?'Connecting to '+roomArg+'...':'Enter room code')+'</span></div>'+
       '<div class="input-group">'+
         '<input type="text" id="codeInput" placeholder="4-letter code" maxlength="4"'+
         ' value="'+roomArg+'" oninput="this.value=this.value.toUpperCase()">'+
       '</div>'+
-      '<button class="btn btn-primary" id="connectBtn" onclick="connectReceiver()">⟶ &nbsp;Connect</button>'+
+      '<button class="btn btn-primary" id="connectBtn" onclick="connectReceiver()">Connect</button>'+
       '<div class="mode-toggle" style="margin-top:14px">Sending? '+
-        '<a href="/" onclick="location.hash=\'\';location.href=\'/\';return false;">Sender mode →</a></div>'+
+        '<a href="/" onclick="location.hash=\'\';location.href=\'/\';return false;">Sender mode</a></div>'+
     '</div>';
   if(roomArg){setTimeout(connectReceiver,600)}}
 
@@ -356,15 +313,15 @@ function connectReceiver(){
   var roomId=((codeInput?codeInput.value:'')||roomArg).trim().toUpperCase();
   if(!roomId){recvSetStatus('error','Enter a room code');return}
   var btn=document.getElementById('connectBtn');
-  if(btn){btn.disabled=true;btn.textContent='Connecting…'}
-  recvSetStatus('loading','Looking for stream…');
+  if(btn){btn.disabled=true;btn.textContent='Connecting...'}
+  recvSetStatus('loading','Looking for stream...');
   var attempts=0,found=false;
   var t=setInterval(function(){
     attempts++;
     if(attempts>60){
-      clearInterval(t);recvSetStatus('error','Not found — check code');
-      if(btn){btn.disabled=false;btn.innerHTML='⟶ Retry'};return}
-    if(attempts>3)recvSetStatus('loading','Waiting… ('+attempts+'s)');
+      clearInterval(t);recvSetStatus('error','Not found - check code');
+      if(btn){btn.disabled=false;btn.innerHTML='Retry'};return}
+    if(attempts>3)recvSetStatus('loading','Waiting... ('+attempts+'s)');
     fbGet('/rooms/'+roomId,function(err,data){
       if(found)return;
       if(data&&data.offer&&(data.offer.mode==='webrtc'||data.offer.sdp)){
@@ -372,15 +329,11 @@ function connectReceiver(){
   recvTimers.push(t)}
 
 function connectWebRTC(roomId,offer){
-  recvSetStatus('loading','WebRTC — connecting…');
+  recvSetStatus('loading','WebRTC - connecting...');
   recvPc=new RTC(ICE_CONFIG);
-
   var vid=document.createElement('video');
   vid.style.cssText='position:fixed;inset:0;width:100vw;height:100vh;object-fit:contain;background:#000;z-index:100;cursor:pointer';
   vid.autoplay=true;vid.playsInline=true;vid.muted=false;
-
-  // Guard: ontrack fires once per track (video + audio = 2 calls).
-  // Without this the second call resets srcObject mid-play → placeholder/freeze.
   var streamSet=false;
   recvPc.ontrack=function(e){
     if(streamSet||!e.streams||!e.streams[0])return;
@@ -389,28 +342,25 @@ function connectWebRTC(roomId,offer){
     document.body.appendChild(vid);
     document.getElementById('app').style.display='none';
     vid.srcObject=stream;
-    vid.play().catch(function(){
-      // Autoplay blocked — mute and retry (user can unmute by clicking)
-      vid.muted=true;
-      vid.play().catch(function(){});
-    });
+    vid.play().catch(function(){vid.muted=true;vid.play().catch(function(){})});
     var go=vid.requestFullscreen||vid.webkitRequestFullscreen;
     if(go)try{go.call(vid)}catch(e){}
     vid.onclick=function(){
       document.body.removeChild(vid);
       document.getElementById('app').style.display='flex';
       renderReceiver()}};
-
   recvPc.onconnectionstatechange=function(){
     if(recvPc&&recvPc.connectionState==='failed'){recvSetStatus('error','Connection failed')}};
-
-  recvPc.setRemoteDescription(new SDESC(offer))
+  // cleanSDP on the offer before parsing - in case browser stored it with extmap line
+  var cleanOffer={type:offer.type,sdp:cleanSDP(offer.sdp)};
+  recvPc.setRemoteDescription(new SDESC(cleanOffer))
   .then(function(){return recvPc.createAnswer()})
   .then(function(a){return recvPc.setLocalDescription(a)})
   .then(function(){
     waitForICE(recvPc,function(ld){
-      fbPut('/rooms/'+roomId+'/answer',{type:ld.type,sdp:ld.sdp});
-      recvSetStatus('live','Streaming via WebRTC · LAN')})})
+      // cleanSDP on answer too - Chrome adds extmap back during createAnswer
+      fbPut('/rooms/'+roomId+'/answer',{type:ld.type,sdp:cleanSDP(ld.sdp)});
+      recvSetStatus('live','Streaming via WebRTC - LAN')})})
   .catch(function(e){recvSetStatus('error','WebRTC: '+e.message)})}
 
 function recvSetStatus(type,msg){
