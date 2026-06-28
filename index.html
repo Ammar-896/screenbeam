@@ -6,17 +6,17 @@
 <title>ScreenBeam</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
 <style>
-  :root{--bg:#050508;--surface:#0d0d14;--border:#1a1a2e;--accent:#00e5ff;--accent2:#7b2fff;
-    --text:#e8e8f0;--muted:#555570;--success:#00ff9d;--error:#ff4466;--warn:#ffaa00}
+  :root{--bg:#070600;--surface:#100e06;--border:#241c08;--accent:#f0b429;--accent2:#c47f17;
+    --text:#f0e8d0;--muted:#5a5040;--success:#00ff9d;--error:#ff4466;--warn:#f0b429}
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:var(--bg);color:var(--text);font-family:'Syne',sans-serif;min-height:100vh;
     display:flex;align-items:center;justify-content:center;position:relative;overflow-x:hidden}
   body::before{content:'';position:fixed;inset:0;
-    background:radial-gradient(ellipse 60% 40% at 20% 50%,rgba(123,47,255,.06) 0%,transparent 70%),
-    radial-gradient(ellipse 50% 35% at 80% 50%,rgba(0,229,255,.05) 0%,transparent 70%);pointer-events:none}
+    background:radial-gradient(ellipse 60% 40% at 20% 50%,rgba(196,127,23,.08) 0%,transparent 70%),
+    radial-gradient(ellipse 50% 35% at 80% 50%,rgba(240,180,41,.05) 0%,transparent 70%);pointer-events:none}
   .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:36px 28px;
     width:460px;max-width:95vw;position:relative;
-    box-shadow:0 0 0 1px rgba(0,229,255,.04),0 32px 64px rgba(0,0,0,.6);animation:fadeUp .4s ease both}
+    box-shadow:0 0 0 1px rgba(240,180,41,.06),0 32px 64px rgba(0,0,0,.7);animation:fadeUp .4s ease both}
   @keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
   .card::before{content:'';position:absolute;top:0;left:10%;right:10%;height:1px;
     background:linear-gradient(90deg,transparent,var(--accent),var(--accent2),transparent)}
@@ -31,9 +31,9 @@
   .btn{width:100%;padding:14px 20px;border-radius:10px;border:none;font-family:'Syne',sans-serif;
     font-size:15px;font-weight:700;cursor:pointer;transition:all .2s ease;letter-spacing:.3px;margin-bottom:10px}
   .btn:last-child{margin-bottom:0}
-  .btn-primary{background:linear-gradient(135deg,var(--accent2),#5500cc);color:#fff;
-    box-shadow:0 4px 20px rgba(123,47,255,.3)}
-  .btn-primary:hover{transform:translateY(-1px);box-shadow:0 8px 28px rgba(123,47,255,.45)}
+  .btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#0a0800;
+    box-shadow:0 4px 20px rgba(196,127,23,.35)}
+  .btn-primary:hover{transform:translateY(-1px);box-shadow:0 8px 28px rgba(196,127,23,.5)}
   .btn-primary:active{transform:translateY(0)}
   .btn:disabled{opacity:.4;cursor:not-allowed;transform:none!important}
   .btn-stop{background:rgba(255,68,102,.1);border:1px solid rgba(255,68,102,.3);color:var(--error)}
@@ -47,12 +47,12 @@
   .status-dot.error{background:var(--error)}
   .status-dot.loading{background:var(--accent);animation:pulse 1s infinite}
   .status-dot.warn{background:var(--warn)}
-  .room-block{padding:20px;border-radius:12px;background:rgba(0,229,255,.03);
-    border:1px solid rgba(0,229,255,.12);margin-bottom:14px}
+  .room-block{padding:20px;border-radius:12px;background:rgba(240,180,41,.04);
+    border:1px solid rgba(240,180,41,.15);margin-bottom:14px}
   .room-label{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);
     letter-spacing:2px;text-transform:uppercase;margin-bottom:8px}
   .room-code{font-family:'JetBrains Mono',monospace;font-size:48px;font-weight:700;color:var(--accent);
-    letter-spacing:12px;text-shadow:0 0 20px rgba(0,229,255,.4);margin-bottom:12px;word-break:break-all}
+    letter-spacing:12px;text-shadow:0 0 20px rgba(240,180,41,.55);margin-bottom:12px;word-break:break-all}
   .room-url{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text);
     background:rgba(0,0,0,.4);border:1px solid var(--border);border-radius:6px;padding:10px 14px;
     word-break:break-all;line-height:1.5;cursor:pointer;transition:border-color .2s}
@@ -68,10 +68,10 @@
     letter-spacing:8px;text-transform:uppercase;text-align:center;outline:none;
     transition:border-color .2s,box-shadow .2s}
   input::placeholder{letter-spacing:1px;color:var(--muted);text-transform:none;font-size:13px}
-  input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,229,255,.08)}
+  input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(240,180,41,.12)}
   .notice{padding:14px 16px;border-radius:10px;font-family:'JetBrains Mono',monospace;
     font-size:11px;line-height:1.7;margin-bottom:14px}
-  .notice.info{background:rgba(0,229,255,.05);border:1px solid rgba(0,229,255,.15);color:var(--muted)}
+  .notice.info{background:rgba(240,180,41,.05);border:1px solid rgba(240,180,41,.15);color:var(--muted)}
   .notice strong{display:block;margin-bottom:4px;font-size:12px;letter-spacing:.5px}
   .notice.info strong{color:var(--accent)}
   .sharing-indicator{display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:13px;color:var(--success)}
@@ -343,6 +343,10 @@ function connectWebRTC(roomId,offer){
     document.getElementById('app').style.display='none';
     vid.srcObject=stream;
     vid.play().catch(function(){vid.muted=true;vid.play().catch(function(){})});
+    var stallTimer=null;
+    vid.addEventListener('waiting',function(){if(!stallTimer)stallTimer=setTimeout(function(){stallTimer=null;vid.play().catch(function(){})},1000)});
+    vid.addEventListener('stalled',function(){if(!stallTimer)stallTimer=setTimeout(function(){stallTimer=null;vid.play().catch(function(){})},1000)});
+    vid.addEventListener('playing',function(){if(stallTimer){clearTimeout(stallTimer);stallTimer=null}});
     var go=vid.requestFullscreen||vid.webkitRequestFullscreen;
     if(go)try{go.call(vid)}catch(e){}
     vid.onclick=function(){
