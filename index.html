@@ -335,31 +335,6 @@ function connectReceiver(){
         found=true;clearInterval(t);connectWebRTC(roomId,data.offer)}})},1000);
   recvTimers.push(t)}
 
-// Delays the audio track by AUDIO_SYNC_DELAY_MS so it lines back up with
-// video that's been held up in the H264 encoder's pipeline. Returns a new
-// MediaStream with the original video track + delayed audio track. Falls
-// back to the original stream if Web Audio isn't available for any reason.
-var syncAudioCtx=null;
-function buildSyncedStream(stream){
-  try{
-    var audioTracks=stream.getAudioTracks();
-    var videoTracks=stream.getVideoTracks();
-    if(!audioTracks.length||AUDIO_SYNC_DELAY_MS<=0)return stream;
-    var AC=window.AudioContext||window.webkitAudioContext;
-    if(!AC)return stream;
-    syncAudioCtx=new AC();
-    syncAudioCtx.resume().catch(function(){});
-    var src=syncAudioCtx.createMediaStreamSource(new MediaStream([audioTracks[0]]));
-    var delayNode=syncAudioCtx.createDelay(2.0);
-    delayNode.delayTime.value=AUDIO_SYNC_DELAY_MS/1000;
-    var dest=syncAudioCtx.createMediaStreamDestination();
-    src.connect(delayNode);delayNode.connect(dest);
-    var synced=new MediaStream();
-    videoTracks.forEach(function(t){synced.addTrack(t)});
-    dest.stream.getAudioTracks().forEach(function(t){synced.addTrack(t)});
-    return synced;
-  }catch(e){return stream}}
-
 function connectWebRTC(roomId,offer){
   recvSetStatus('loading','WebRTC - connecting...');
   recvPc=new RTC(ICE_CONFIG);
@@ -368,9 +343,16 @@ function connectWebRTC(roomId,offer){
   vid.autoplay=true;vid.playsInline=true;vid.muted=false;
   var streamSet=false;
   recvPc.ontrack=function(e){
+    // Ask the browser's own jitter buffer to hold audio a bit longer so it
+    // lines up with video that's delayed by the H264 encoder pipeline.
+    // This is a hint on the native RTP receiver, not a rebuilt stream, so
+    // it doesn't disturb the browser's autoplay-with-sound exemption for
+    // WebRTC tracks. Chrome/Edge only; other browsers just ignore it.
+    if(e.track&&e.track.kind==='audio'&&e.receiver&&'playoutDelayHint' in e.receiver){
+      try{e.receiver.playoutDelayHint=AUDIO_SYNC_DELAY_MS/1000}catch(err){}}
     if(streamSet||!e.streams||!e.streams[0])return;
     streamSet=true;
-    var stream=buildSyncedStream(e.streams[0]);
+    var stream=e.streams[0];
     document.body.appendChild(vid);
     document.getElementById('app').style.display='none';
     vid.srcObject=stream;
@@ -382,7 +364,6 @@ function connectWebRTC(roomId,offer){
     var go=vid.requestFullscreen||vid.webkitRequestFullscreen;
     if(go)try{go.call(vid)}catch(e){}
     vid.onclick=function(){
-      if(syncAudioCtx){try{syncAudioCtx.close()}catch(e){}syncAudioCtx=null}
       document.body.removeChild(vid);
       document.getElementById('app').style.display='flex';
       renderReceiver()}};
