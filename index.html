@@ -88,6 +88,13 @@ var FIREBASE_URL='https://screenbeam-2f810-default-rtdb.europe-west1.firebasedat
 var VIDEO_MAXBITRATE = 3000000;
 var AUDIO_MAXBITRATE = 128000;
 var ICE_GATHER_TIMEOUT = 1500;
+// H264 hardware encode has real pipeline latency (frames get buffered before
+// they're ready to send) that Opus audio encode doesn't have, so audio tends
+// to arrive ahead of video. We compensate on the receiver by deliberately
+// delaying the audio track to match. Tune this if it drifts - a few hundred
+// ms is typical for GPU H264 encode. Increase if audio is still early,
+// decrease if audio now lags behind video.
+var AUDIO_SYNC_DELAY_MS = 220;
 
 var hashCode=location.hash.slice(1).toUpperCase().trim();
 var isRecv=hashCode.length>0;
@@ -328,6 +335,31 @@ function connectReceiver(){
         found=true;clearInterval(t);connectWebRTC(roomId,data.offer)}})},1000);
   recvTimers.push(t)}
 
+// Delays the audio track by AUDIO_SYNC_DELAY_MS so it lines back up with
+// video that's been held up in the H264 encoder's pipeline. Returns a new
+// MediaStream with the original video track + delayed audio track. Falls
+// back to the original stream if Web Audio isn't available for any reason.
+var syncAudioCtx=null;
+function buildSyncedStream(stream){
+  try{
+    var audioTracks=stream.getAudioTracks();
+    var videoTracks=stream.getVideoTracks();
+    if(!audioTracks.length||AUDIO_SYNC_DELAY_MS<=0)return stream;
+    var AC=window.AudioContext||window.webkitAudioContext;
+    if(!AC)return stream;
+    syncAudioCtx=new AC();
+    syncAudioCtx.resume().catch(function(){});
+    var src=syncAudioCtx.createMediaStreamSource(new MediaStream([audioTracks[0]]));
+    var delayNode=syncAudioCtx.createDelay(2.0);
+    delayNode.delayTime.value=AUDIO_SYNC_DELAY_MS/1000;
+    var dest=syncAudioCtx.createMediaStreamDestination();
+    src.connect(delayNode);delayNode.connect(dest);
+    var synced=new MediaStream();
+    videoTracks.forEach(function(t){synced.addTrack(t)});
+    dest.stream.getAudioTracks().forEach(function(t){synced.addTrack(t)});
+    return synced;
+  }catch(e){return stream}}
+
 function connectWebRTC(roomId,offer){
   recvSetStatus('loading','WebRTC - connecting...');
   recvPc=new RTC(ICE_CONFIG);
@@ -338,7 +370,7 @@ function connectWebRTC(roomId,offer){
   recvPc.ontrack=function(e){
     if(streamSet||!e.streams||!e.streams[0])return;
     streamSet=true;
-    var stream=e.streams[0];
+    var stream=buildSyncedStream(e.streams[0]);
     document.body.appendChild(vid);
     document.getElementById('app').style.display='none';
     vid.srcObject=stream;
@@ -350,6 +382,7 @@ function connectWebRTC(roomId,offer){
     var go=vid.requestFullscreen||vid.webkitRequestFullscreen;
     if(go)try{go.call(vid)}catch(e){}
     vid.onclick=function(){
+      if(syncAudioCtx){try{syncAudioCtx.close()}catch(e){}syncAudioCtx=null}
       document.body.removeChild(vid);
       document.getElementById('app').style.display='flex';
       renderReceiver()}};
