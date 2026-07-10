@@ -88,13 +88,6 @@ var FIREBASE_URL='https://screenbeam-2f810-default-rtdb.europe-west1.firebasedat
 var VIDEO_MAXBITRATE = 3000000;
 var AUDIO_MAXBITRATE = 128000;
 var ICE_GATHER_TIMEOUT = 1500;
-// H264 hardware encode has real pipeline latency (frames get buffered before
-// they're ready to send) that Opus audio encode doesn't have, so audio tends
-// to arrive ahead of video. We compensate on the receiver by deliberately
-// delaying the audio track to match. Tune this if it drifts - a few hundred
-// ms is typical for GPU H264 encode. Increase if audio is still early,
-// decrease if audio now lags behind video.
-var AUDIO_SYNC_DELAY_MS = 220;
 
 var hashCode=location.hash.slice(1).toUpperCase().trim();
 var isRecv=hashCode.length>0;
@@ -202,7 +195,7 @@ function startWebRTC(){
   }).then(function(stream){
     activeStream=stream;
     var vt=stream.getVideoTracks()[0];
-    try{vt.contentHint='detail'}catch(e){}
+    try{vt.contentHint='motion'}catch(e){}
     vt.onended=function(){stopSharing()};
     var roomId=makeRoomId();activeRoomId=roomId;
     fbDelete('/rooms/'+roomId);
@@ -343,13 +336,6 @@ function connectWebRTC(roomId,offer){
   vid.autoplay=true;vid.playsInline=true;vid.muted=false;
   var streamSet=false;
   recvPc.ontrack=function(e){
-    // Ask the browser's own jitter buffer to hold audio a bit longer so it
-    // lines up with video that's delayed by the H264 encoder pipeline.
-    // This is a hint on the native RTP receiver, not a rebuilt stream, so
-    // it doesn't disturb the browser's autoplay-with-sound exemption for
-    // WebRTC tracks. Chrome/Edge only; other browsers just ignore it.
-    if(e.track&&e.track.kind==='audio'&&e.receiver&&'playoutDelayHint' in e.receiver){
-      try{e.receiver.playoutDelayHint=AUDIO_SYNC_DELAY_MS/1000}catch(err){}}
     if(streamSet||!e.streams||!e.streams[0])return;
     streamSet=true;
     var stream=e.streams[0];
