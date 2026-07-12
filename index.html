@@ -79,6 +79,16 @@
     box-shadow:0 0 8px var(--error)}
   .mode-toggle{margin-top:14px;text-align:center;font-size:13px;color:var(--muted)}
   .mode-toggle a{color:var(--accent);text-decoration:none;cursor:pointer}
+  .mode-switch{display:flex;gap:6px;padding:4px;border-radius:10px;background:rgba(0,0,0,.35);
+    border:1px solid var(--border);margin-bottom:10px}
+  .mode-switch-btn{flex:1;padding:10px 12px;border-radius:7px;border:none;background:transparent;
+    color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;
+    letter-spacing:.5px;text-transform:uppercase;cursor:pointer;transition:all .2s ease}
+  .mode-switch-btn:hover{color:var(--text)}
+  .mode-switch-btn.active{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#0a0800;
+    box-shadow:0 2px 10px rgba(196,127,23,.35)}
+  .mode-switch-hint{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);
+    line-height:1.5;margin-bottom:14px;padding:0 2px}
 </style>
 </head>
 <body>
@@ -88,6 +98,10 @@ var FIREBASE_URL='https://screenbeam-2f810-default-rtdb.europe-west1.firebasedat
 var VIDEO_MAXBITRATE = 3000000;
 var AUDIO_MAXBITRATE = 128000;
 var ICE_GATHER_TIMEOUT = 1500;
+// Receiver-side only. In "Delayed" mode we put a floor under video's own
+// playout buffer so it has a cushion against Wi-Fi jitter/loss instead of
+// stuttering. "Live" mode never touches it (unchanged, lowest latency).
+var DELAYED_VIDEO_BUFFER_MS = 700;
 
 var hashCode=location.hash.slice(1).toUpperCase().trim();
 var isRecv=hashCode.length>0;
@@ -288,9 +302,15 @@ function switchToReceiver(){
 
 // --- RECEIVER ---
 var recvPc=null,recvTimers=[],recvStatsTimer=null,debugHud=null,wakeLock=null,currentVid=null;
+// 'live' = current behavior, untouched, lowest latency.
+// 'delayed' = floor video's playout buffer at DELAYED_VIDEO_BUFFER_MS for smoother playback.
+var recvMode='live';
+var videoBufferTouched=false; // true once we've bumped this connection's video buffer up, so we know to bring it back down if switched to Live
 document.addEventListener('keydown',function(ev){
   if((ev.key==='d'||ev.key==='D')&&debugHud){
-    debugHud.style.display=(debugHud.style.display==='none')?'block':'none'}});
+    debugHud.style.display=(debugHud.style.display==='none')?'block':'none'}
+  if(isRecv&&(ev.key==='m'||ev.key==='M')){
+    setRecvMode(recvMode==='live'?'delayed':'live')}});
 
 // TVs often throttle/pause a page's JS after a period with no remote input -
 // the same idle timeout that dims the screen. That can silently stop our
@@ -312,6 +332,45 @@ document.addEventListener('visibilitychange',function(){
   }
 });
 
+// Only touches video's receiver in Delayed mode. In Live mode we leave it
+// completely alone unless a previous Delayed selection bumped it up on THIS
+// connection, in which case we bring it back down to hand latency back.
+function applyVideoBufferTarget(){
+  if(!recvPc)return;
+  if(recvMode==='delayed'){
+    videoBufferTouched=true;
+    recvPc.getReceivers().forEach(function(r){
+      if(!r.track||r.track.kind!=='video')return;
+      try{
+        if('playoutDelayHint' in r) r.playoutDelayHint=DELAYED_VIDEO_BUFFER_MS/1000;
+        if('jitterBufferTarget' in r) r.jitterBufferTarget=DELAYED_VIDEO_BUFFER_MS;
+      }catch(err){}
+    });
+  }else if(videoBufferTouched){
+    recvPc.getReceivers().forEach(function(r){
+      if(!r.track||r.track.kind!=='video')return;
+      try{
+        if('playoutDelayHint' in r) r.playoutDelayHint=0;
+        if('jitterBufferTarget' in r) r.jitterBufferTarget=0;
+      }catch(err){}
+    });
+  }
+}
+
+function setRecvMode(mode){
+  recvMode=mode;
+  var btns=document.querySelectorAll('.mode-switch-btn');
+  btns.forEach(function(b){b.classList.toggle('active',b.getAttribute('data-mode')===mode)});
+  var hint=document.getElementById('modeSwitchHint');
+  if(hint)hint.textContent=modeHintText(mode);
+  applyVideoBufferTarget();
+}
+
+function modeHintText(mode){
+  return (mode==='delayed')
+    ?'Delayed (~'+(DELAYED_VIDEO_BUFFER_MS/1000)+'s) - extra buffer smooths out Wi-Fi jitter/stutter. Press M to switch anytime.'
+    :'Live - lowest latency, more sensitive to Wi-Fi jitter. Press M to switch anytime.'}
+
 function renderReceiver(){
   document.getElementById('app').innerHTML=
     '<div class="card">'+
@@ -319,6 +378,11 @@ function renderReceiver(){
       '<div class="subtitle">Receiver Mode / TV / Display</div>'+
       '<div class="status-bar" id="recvStatus"><div class="status-dot waiting"></div>'+
         '<span>'+(roomArg?'Connecting to '+roomArg+'...':'Enter room code')+'</span></div>'+
+      '<div class="mode-switch" id="modeSwitch">'+
+        '<button type="button" class="mode-switch-btn'+(recvMode==='live'?' active':'')+'" data-mode="live" onclick="setRecvMode(\'live\')">Live</button>'+
+        '<button type="button" class="mode-switch-btn'+(recvMode==='delayed'?' active':'')+'" data-mode="delayed" onclick="setRecvMode(\'delayed\')">Delayed</button>'+
+      '</div>'+
+      '<div class="mode-switch-hint" id="modeSwitchHint">'+modeHintText(recvMode)+'</div>'+
       '<div class="input-group">'+
         '<input type="text" id="codeInput" placeholder="4-letter code" maxlength="4"'+
         ' value="'+roomArg+'" oninput="this.value=this.value.toUpperCase()">'+
@@ -334,6 +398,7 @@ function connectReceiver(){
   if(recvStatsTimer){clearInterval(recvStatsTimer);recvStatsTimer=null}
   if(wakeLock){wakeLock.release().catch(function(){});wakeLock=null}
   currentVid=null;
+  videoBufferTouched=false;
   if(recvPc){try{recvPc.close()}catch(e){}recvPc=null}
   var codeInput=document.getElementById('codeInput');
   var roomId=((codeInput?codeInput.value:'')||roomArg).trim().toUpperCase();
@@ -372,15 +437,19 @@ function connectWebRTC(roomId,offer){
     vid.play().catch(function(){vid.muted=true;vid.play().catch(function(){})});
     currentVid=vid;
     requestWakeLock();
+    applyVideoBufferTarget();
 
     // --- ADAPTIVE A/V SYNC (visible by default - press 'd' to hide/show) ---
-    // Video keeps whatever buffer it naturally needs to stay smooth at full
-    // quality - we never touch its receiver. Instead, every cycle we measure
-    // video's ACTUAL current delay and set that same target on the AUDIO
-    // receiver, so audio is deliberately held back to match video instead of
-    // racing ahead of it. Whatever video needs to buffer right now, audio
-    // buffers the same amount - continuously re-measured, so they land
-    // together no matter how video's delay moves around, with no quality cost.
+    // In Live mode video keeps whatever buffer it naturally needs to stay
+    // smooth at full quality - we don't touch its receiver, latency stays
+    // minimal. In Delayed mode applyVideoBufferTarget() has put a floor
+    // under video's buffer for extra cushion against jitter/loss. Either
+    // way, every cycle we measure video's ACTUAL current delay and set that
+    // same target on the AUDIO receiver, so audio is deliberately held back
+    // to match video instead of racing ahead of it. Whatever video needs to
+    // buffer right now, audio buffers the same amount - continuously
+    // re-measured, so they land together no matter which mode is active or
+    // how video's delay moves around. Press 'm' anytime to switch modes.
     // On by default since TVs have no keyboard to press 'd' with.
     if(!debugHud){
       debugHud=document.createElement('div');
@@ -434,13 +503,15 @@ function connectWebRTC(roomId,offer){
         if(aMs!=null&&vMs!=null){
           var diff=aMs-vMs;
           var wlStatus=('wakeLock' in navigator)?(wakeLock?'active':'inactive'):'unsupported';
-          var line='audio buffer: '+aMs.toFixed(1)+'ms\nvideo buffer: '+vMs.toFixed(1)+'ms\ndiff (a-v): '+diff.toFixed(1)+'ms\n'+
+          var modeLabel=(recvMode==='delayed')?('DELAYED (~'+(DELAYED_VIDEO_BUFFER_MS/1000)+'s target)'):'LIVE';
+          var line='mode: '+modeLabel+' [m to toggle]\n'+
+            'audio buffer: '+aMs.toFixed(1)+'ms\nvideo buffer: '+vMs.toFixed(1)+'ms\ndiff (a-v): '+diff.toFixed(1)+'ms\n'+
             'video lost/s: '+(vLostDelta!=null?vLostDelta:'-')+'  jitter: '+(vJitterMs!=null?vJitterMs.toFixed(1)+'ms':'-')+'\n'+
             'RTT: '+(rtt!=null?rtt.toFixed(0)+'ms':'-')+'  est. bw: '+(availBw!=null?(availBw/1000).toFixed(0)+'kbps':'-')+'\n'+
             'wake lock: '+wlStatus+'  visibility: '+document.visibilityState+'\n'+
             '[d] toggle this readout';
           if(debugHud)debugHud.textContent=line;
-          console.log('[ScreenBeam A/V] audio='+aMs.toFixed(1)+'ms video='+vMs.toFixed(1)+'ms diff='+diff.toFixed(1)+
+          console.log('[ScreenBeam A/V] mode='+recvMode+' audio='+aMs.toFixed(1)+'ms video='+vMs.toFixed(1)+'ms diff='+diff.toFixed(1)+
             'ms videoLost='+vLostDelta+' jitter='+(vJitterMs!=null?vJitterMs.toFixed(1):'-')+'ms rtt='+(rtt!=null?rtt.toFixed(0):'-')+
             'ms bw='+(availBw!=null?(availBw/1000).toFixed(0):'-')+'kbps wakeLock='+wlStatus+' visibility='+document.visibilityState);
         }
