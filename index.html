@@ -287,7 +287,7 @@ function switchToReceiver(){
   if(r){location.hash=r.trim().toUpperCase();location.reload()}}
 
 // --- RECEIVER ---
-var recvPc=null,recvTimers=[],recvSyncTimer=null,recvStatsTimer=null,debugHud=null;
+var recvPc=null,recvTimers=[],recvStatsTimer=null,debugHud=null;
 document.addEventListener('keydown',function(ev){
   if((ev.key==='d'||ev.key==='D')&&debugHud){
     debugHud.style.display=(debugHud.style.display==='none')?'block':'none'}});
@@ -311,7 +311,6 @@ function renderReceiver(){
 
 function connectReceiver(){
   recvTimers.forEach(function(t){clearInterval(t);clearTimeout(t)});recvTimers=[];
-  if(recvSyncTimer){clearInterval(recvSyncTimer);recvSyncTimer=null}
   if(recvStatsTimer){clearInterval(recvStatsTimer);recvStatsTimer=null}
   if(recvPc){try{recvPc.close()}catch(e){}recvPc=null}
   var codeInput=document.getElementById('codeInput');
@@ -341,23 +340,7 @@ function connectWebRTC(roomId,offer){
   vid.autoplay=true;vid.playsInline=true;vid.muted=false;
   var streamSet=false;
 
-  // A one-time playoutDelayHint only sets a MINIMUM - Chrome's adaptive jitter
-  // buffer is still free to grow audio delay past it as conditions change, which
-  // is why a single hint doesn't hold. So we keep re-asserting a near-zero target
-  // on every receiver (audio AND video) on a loop, fighting the growth continuously
-  // instead of hinting once and hoping it sticks.
-  function enforceSync(){
-    if(!recvPc)return;
-    recvPc.getReceivers().forEach(function(r){
-      try{
-        if('playoutDelayHint' in r) r.playoutDelayHint=0;
-        if('jitterBufferTarget' in r) r.jitterBufferTarget=0;
-      }catch(e){}
-    })}
-  recvSyncTimer=setInterval(enforceSync,500);
-
   recvPc.ontrack=function(e){
-    enforceSync();
     if(streamSet||!e.streams||!e.streams[0])return;
     streamSet=true;
     var stream=e.streams[0];
@@ -366,16 +349,14 @@ function connectWebRTC(roomId,offer){
     vid.srcObject=stream;
     vid.play().catch(function(){vid.muted=true;vid.play().catch(function(){})});
 
-    // --- LIVE A/V DELAY READOUT (press 'd' to toggle) ---
-    // Instead of another blind fix, this shows exactly what Chrome's own
-    // jitter buffer is doing to audio vs video, in real time. jitterBufferDelay
-    // and jitterBufferEmittedCount are lifetime totals, so we track the delta
-    // between polls to get the delay over just the last second - not a
-    // lifetime average that would hide recent changes. Watch "diff" over a
-    // long session: if it climbs steadily, our resets aren't taking effect
-    // and we need a different lever; if it stays flat while the audio still
-    // sounds late, the delay isn't in the jitter buffer at all and is coming
-    // from somewhere else in the pipeline (e.g. sender-side capture).
+    // --- ADAPTIVE A/V SYNC (press 'd' for the live readout) ---
+    // Video keeps whatever buffer it naturally needs to stay smooth at full
+    // quality - we never touch its receiver. Instead, every cycle we measure
+    // video's ACTUAL current delay and set that same target on the AUDIO
+    // receiver, so audio is deliberately held back to match video instead of
+    // racing ahead of it. Whatever video needs to buffer right now, audio
+    // buffers the same amount - continuously re-measured, so they land
+    // together no matter how video's delay moves around, with no quality cost.
     if(!debugHud){
       debugHud=document.createElement('div');
       debugHud.style.cssText='position:fixed;top:12px;left:12px;z-index:200;'+
@@ -384,30 +365,60 @@ function connectWebRTC(roomId,offer){
       document.body.appendChild(debugHud);
     }
     var prevA=null,prevV=null;
+    var SYNC_MARGIN_MS=15; // small safety margin so audio is never LESS delayed than video
     recvStatsTimer=setInterval(function(){
       if(!recvPc)return;
       recvPc.getStats().then(function(stats){
-        var a=null,v=null;
+        var a=null,v=null,rtt=null,availBw=null;
         stats.forEach(function(s){
           if(s.type==='inbound-rtp'&&s.kind==='audio')a=s;
           if(s.type==='inbound-rtp'&&s.kind==='video')v=s;
+          if(s.type==='candidate-pair'&&s.state==='succeeded'&&s.nominated){
+            if(typeof s.currentRoundTripTime==='number')rtt=s.currentRoundTripTime*1000;
+            if(typeof s.availableIncomingBitrate==='number')availBw=s.availableIncomingBitrate;
+            else if(typeof s.availableOutgoingBitrate==='number')availBw=s.availableOutgoingBitrate;
+          }
         });
-        var aMs=null,vMs=null;
+        var aMs=null,vMs=null,vLostDelta=null,vJitterMs=null;
         if(a&&prevA&&a.jitterBufferEmittedCount>prevA.jitterBufferEmittedCount){
           aMs=1000*(a.jitterBufferDelay-prevA.jitterBufferDelay)/(a.jitterBufferEmittedCount-prevA.jitterBufferEmittedCount);
         }
         if(v&&prevV&&v.jitterBufferEmittedCount>prevV.jitterBufferEmittedCount){
           vMs=1000*(v.jitterBufferDelay-prevV.jitterBufferDelay)/(v.jitterBufferEmittedCount-prevV.jitterBufferEmittedCount);
         }
+        if(v&&prevV&&typeof v.packetsLost==='number'&&typeof prevV.packetsLost==='number'){
+          vLostDelta=v.packetsLost-prevV.packetsLost;
+        }
+        if(v&&typeof v.jitter==='number')vJitterMs=v.jitter*1000;
         if(a)prevA=a;if(v)prevV=v;
+
+        // Pull audio's target up to match video's current delay, every cycle -
+        // video's receiver is never touched, so its buffering (and quality) is
+        // whatever it naturally needs to be.
+        if(vMs!=null&&recvPc){
+          var targetMs=Math.max(0,vMs)+SYNC_MARGIN_MS;
+          recvPc.getReceivers().forEach(function(r){
+            if(!r.track||r.track.kind!=='audio')return;
+            try{
+              if('playoutDelayHint' in r) r.playoutDelayHint=targetMs/1000;
+              if('jitterBufferTarget' in r) r.jitterBufferTarget=targetMs;
+            }catch(err){}
+          });
+        }
+
         if(aMs!=null&&vMs!=null){
           var diff=aMs-vMs;
-          var line='audio buffer: '+aMs.toFixed(1)+'ms\nvideo buffer: '+vMs.toFixed(1)+'ms\ndiff (a-v): '+diff.toFixed(1)+'ms\n[d] toggle this readout';
+          var line='audio buffer: '+aMs.toFixed(1)+'ms\nvideo buffer: '+vMs.toFixed(1)+'ms\ndiff (a-v): '+diff.toFixed(1)+'ms\n'+
+            'video lost/s: '+(vLostDelta!=null?vLostDelta:'-')+'  jitter: '+(vJitterMs!=null?vJitterMs.toFixed(1)+'ms':'-')+'\n'+
+            'RTT: '+(rtt!=null?rtt.toFixed(0)+'ms':'-')+'  est. bw: '+(availBw!=null?(availBw/1000).toFixed(0)+'kbps':'-')+'\n'+
+            '[d] toggle this readout';
           if(debugHud)debugHud.textContent=line;
-          console.log('[ScreenBeam A/V] audio='+aMs.toFixed(1)+'ms video='+vMs.toFixed(1)+'ms diff='+diff.toFixed(1)+'ms');
+          console.log('[ScreenBeam A/V] audio='+aMs.toFixed(1)+'ms video='+vMs.toFixed(1)+'ms diff='+diff.toFixed(1)+
+            'ms videoLost='+vLostDelta+' jitter='+(vJitterMs!=null?vJitterMs.toFixed(1):'-')+'ms rtt='+(rtt!=null?rtt.toFixed(0):'-')+
+            'ms bw='+(availBw!=null?(availBw/1000).toFixed(0):'-')+'kbps');
         }
       }).catch(function(){});
-    },1000);
+    },500);
 
     var stallTimer=null;
     vid.addEventListener('waiting',function(){if(!stallTimer)stallTimer=setTimeout(function(){stallTimer=null;vid.play().catch(function(){})},1000)});
@@ -416,7 +427,6 @@ function connectWebRTC(roomId,offer){
     var go=vid.requestFullscreen||vid.webkitRequestFullscreen;
     if(go)try{go.call(vid)}catch(e){}
     vid.onclick=function(){
-      if(recvSyncTimer){clearInterval(recvSyncTimer);recvSyncTimer=null}
       if(recvStatsTimer){clearInterval(recvStatsTimer);recvStatsTimer=null}
       if(debugHud){debugHud.style.display='none'}
       document.body.removeChild(vid);
@@ -424,7 +434,6 @@ function connectWebRTC(roomId,offer){
       renderReceiver()}};
   recvPc.onconnectionstatechange=function(){
     if(recvPc&&recvPc.connectionState==='failed'){recvSetStatus('error','Connection failed');
-      if(recvSyncTimer){clearInterval(recvSyncTimer);recvSyncTimer=null}
       if(recvStatsTimer){clearInterval(recvStatsTimer);recvStatsTimer=null}}};
   // cleanSDP on the offer before parsing - in case browser stored it with extmap line
   var cleanOffer={type:offer.type,sdp:cleanSDP(offer.sdp)};
