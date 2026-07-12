@@ -336,6 +336,14 @@ function connectWebRTC(roomId,offer){
   vid.autoplay=true;vid.playsInline=true;vid.muted=false;
   var streamSet=false;
   recvPc.ontrack=function(e){
+    // Lock every receiver (audio AND video) to the same low playout delay target.
+    // Left alone, the browser grows the audio jitter buffer independently to avoid
+    // audio glitches - that's what makes audio drift behind video over time/updates.
+    // Pinning both to the same small value keeps them arriving together, like before.
+    try{
+      if('playoutDelayHint' in e.receiver) e.receiver.playoutDelayHint=0.1;
+      if('jitterBufferTarget' in e.receiver) e.receiver.jitterBufferTarget=100;
+    }catch(syncErr){}
     if(streamSet||!e.streams||!e.streams[0])return;
     streamSet=true;
     var stream=e.streams[0];
