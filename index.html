@@ -287,7 +287,7 @@ function switchToReceiver(){
   if(r){location.hash=r.trim().toUpperCase();location.reload()}}
 
 // --- RECEIVER ---
-var recvPc=null,recvTimers=[];
+var recvPc=null,recvTimers=[],recvSyncTimer=null;
 
 function renderReceiver(){
   document.getElementById('app').innerHTML=
@@ -308,6 +308,7 @@ function renderReceiver(){
 
 function connectReceiver(){
   recvTimers.forEach(function(t){clearInterval(t);clearTimeout(t)});recvTimers=[];
+  if(recvSyncTimer){clearInterval(recvSyncTimer);recvSyncTimer=null}
   if(recvPc){try{recvPc.close()}catch(e){}recvPc=null}
   var codeInput=document.getElementById('codeInput');
   var roomId=((codeInput?codeInput.value:'')||roomArg).trim().toUpperCase();
@@ -335,15 +336,24 @@ function connectWebRTC(roomId,offer){
   vid.style.cssText='position:fixed;inset:0;width:100vw;height:100vh;object-fit:contain;background:#000;z-index:100;cursor:pointer';
   vid.autoplay=true;vid.playsInline=true;vid.muted=false;
   var streamSet=false;
+
+  // A one-time playoutDelayHint only sets a MINIMUM - Chrome's adaptive jitter
+  // buffer is still free to grow audio delay past it as conditions change, which
+  // is why a single hint doesn't hold. So we keep re-asserting a near-zero target
+  // on every receiver (audio AND video) on a loop, fighting the growth continuously
+  // instead of hinting once and hoping it sticks.
+  function enforceSync(){
+    if(!recvPc)return;
+    recvPc.getReceivers().forEach(function(r){
+      try{
+        if('playoutDelayHint' in r) r.playoutDelayHint=0;
+        if('jitterBufferTarget' in r) r.jitterBufferTarget=0;
+      }catch(e){}
+    })}
+  recvSyncTimer=setInterval(enforceSync,500);
+
   recvPc.ontrack=function(e){
-    // Lock every receiver (audio AND video) to the same low playout delay target.
-    // Left alone, the browser grows the audio jitter buffer independently to avoid
-    // audio glitches - that's what makes audio drift behind video over time/updates.
-    // Pinning both to the same small value keeps them arriving together, like before.
-    try{
-      if('playoutDelayHint' in e.receiver) e.receiver.playoutDelayHint=0.1;
-      if('jitterBufferTarget' in e.receiver) e.receiver.jitterBufferTarget=100;
-    }catch(syncErr){}
+    enforceSync();
     if(streamSet||!e.streams||!e.streams[0])return;
     streamSet=true;
     var stream=e.streams[0];
@@ -358,11 +368,13 @@ function connectWebRTC(roomId,offer){
     var go=vid.requestFullscreen||vid.webkitRequestFullscreen;
     if(go)try{go.call(vid)}catch(e){}
     vid.onclick=function(){
+      if(recvSyncTimer){clearInterval(recvSyncTimer);recvSyncTimer=null}
       document.body.removeChild(vid);
       document.getElementById('app').style.display='flex';
       renderReceiver()}};
   recvPc.onconnectionstatechange=function(){
-    if(recvPc&&recvPc.connectionState==='failed'){recvSetStatus('error','Connection failed')}};
+    if(recvPc&&recvPc.connectionState==='failed'){recvSetStatus('error','Connection failed');
+      if(recvSyncTimer){clearInterval(recvSyncTimer);recvSyncTimer=null}}};
   // cleanSDP on the offer before parsing - in case browser stored it with extmap line
   var cleanOffer={type:offer.type,sdp:cleanSDP(offer.sdp)};
   recvPc.setRemoteDescription(new SDESC(cleanOffer))
