@@ -287,10 +287,30 @@ function switchToReceiver(){
   if(r){location.hash=r.trim().toUpperCase();location.reload()}}
 
 // --- RECEIVER ---
-var recvPc=null,recvTimers=[],recvStatsTimer=null,debugHud=null;
+var recvPc=null,recvTimers=[],recvStatsTimer=null,debugHud=null,wakeLock=null,currentVid=null;
 document.addEventListener('keydown',function(ev){
   if((ev.key==='d'||ev.key==='D')&&debugHud){
     debugHud.style.display=(debugHud.style.display==='none')?'block':'none'}});
+
+// TVs often throttle/pause a page's JS after a period with no remote input -
+// the same idle timeout that dims the screen. That can silently stop our
+// audio/video sync loop even while playback looks fine. Holding a screen wake
+// lock keeps the page from being treated as idle in the first place, and we
+// re-request it (and nudge playback) whenever the page becomes visible again,
+// since wake locks are auto-released whenever the page goes hidden.
+function requestWakeLock(){
+  if(!('wakeLock' in navigator))return;
+  navigator.wakeLock.request('screen').then(function(wl){
+    wakeLock=wl;
+    wakeLock.addEventListener('release',function(){wakeLock=null});
+  }).catch(function(){wakeLock=null});
+}
+document.addEventListener('visibilitychange',function(){
+  if(document.visibilityState==='visible'){
+    requestWakeLock();
+    if(currentVid&&currentVid.paused)currentVid.play().catch(function(){});
+  }
+});
 
 function renderReceiver(){
   document.getElementById('app').innerHTML=
@@ -312,6 +332,8 @@ function renderReceiver(){
 function connectReceiver(){
   recvTimers.forEach(function(t){clearInterval(t);clearTimeout(t)});recvTimers=[];
   if(recvStatsTimer){clearInterval(recvStatsTimer);recvStatsTimer=null}
+  if(wakeLock){wakeLock.release().catch(function(){});wakeLock=null}
+  currentVid=null;
   if(recvPc){try{recvPc.close()}catch(e){}recvPc=null}
   var codeInput=document.getElementById('codeInput');
   var roomId=((codeInput?codeInput.value:'')||roomArg).trim().toUpperCase();
@@ -348,8 +370,10 @@ function connectWebRTC(roomId,offer){
     document.getElementById('app').style.display='none';
     vid.srcObject=stream;
     vid.play().catch(function(){vid.muted=true;vid.play().catch(function(){})});
+    currentVid=vid;
+    requestWakeLock();
 
-    // --- ADAPTIVE A/V SYNC (press 'd' for the live readout) ---
+    // --- ADAPTIVE A/V SYNC (visible by default - press 'd' to hide/show) ---
     // Video keeps whatever buffer it naturally needs to stay smooth at full
     // quality - we never touch its receiver. Instead, every cycle we measure
     // video's ACTUAL current delay and set that same target on the AUDIO
@@ -357,11 +381,12 @@ function connectWebRTC(roomId,offer){
     // racing ahead of it. Whatever video needs to buffer right now, audio
     // buffers the same amount - continuously re-measured, so they land
     // together no matter how video's delay moves around, with no quality cost.
+    // On by default since TVs have no keyboard to press 'd' with.
     if(!debugHud){
       debugHud=document.createElement('div');
       debugHud.style.cssText='position:fixed;top:12px;left:12px;z-index:200;'+
         'background:rgba(0,0,0,.75);color:#0f9;font:12px/1.5 monospace;'+
-        'padding:8px 12px;border-radius:6px;white-space:pre;display:none;pointer-events:none';
+        'padding:8px 12px;border-radius:6px;white-space:pre;display:block;pointer-events:none';
       document.body.appendChild(debugHud);
     }
     var prevA=null,prevV=null;
@@ -408,14 +433,16 @@ function connectWebRTC(roomId,offer){
 
         if(aMs!=null&&vMs!=null){
           var diff=aMs-vMs;
+          var wlStatus=('wakeLock' in navigator)?(wakeLock?'active':'inactive'):'unsupported';
           var line='audio buffer: '+aMs.toFixed(1)+'ms\nvideo buffer: '+vMs.toFixed(1)+'ms\ndiff (a-v): '+diff.toFixed(1)+'ms\n'+
             'video lost/s: '+(vLostDelta!=null?vLostDelta:'-')+'  jitter: '+(vJitterMs!=null?vJitterMs.toFixed(1)+'ms':'-')+'\n'+
             'RTT: '+(rtt!=null?rtt.toFixed(0)+'ms':'-')+'  est. bw: '+(availBw!=null?(availBw/1000).toFixed(0)+'kbps':'-')+'\n'+
+            'wake lock: '+wlStatus+'  visibility: '+document.visibilityState+'\n'+
             '[d] toggle this readout';
           if(debugHud)debugHud.textContent=line;
           console.log('[ScreenBeam A/V] audio='+aMs.toFixed(1)+'ms video='+vMs.toFixed(1)+'ms diff='+diff.toFixed(1)+
             'ms videoLost='+vLostDelta+' jitter='+(vJitterMs!=null?vJitterMs.toFixed(1):'-')+'ms rtt='+(rtt!=null?rtt.toFixed(0):'-')+
-            'ms bw='+(availBw!=null?(availBw/1000).toFixed(0):'-')+'kbps');
+            'ms bw='+(availBw!=null?(availBw/1000).toFixed(0):'-')+'kbps wakeLock='+wlStatus+' visibility='+document.visibilityState);
         }
       }).catch(function(){});
     },500);
@@ -429,6 +456,8 @@ function connectWebRTC(roomId,offer){
     vid.onclick=function(){
       if(recvStatsTimer){clearInterval(recvStatsTimer);recvStatsTimer=null}
       if(debugHud){debugHud.style.display='none'}
+      if(wakeLock){wakeLock.release().catch(function(){});wakeLock=null}
+      currentVid=null;
       document.body.removeChild(vid);
       document.getElementById('app').style.display='flex';
       renderReceiver()}};
