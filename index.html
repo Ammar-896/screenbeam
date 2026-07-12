@@ -445,7 +445,7 @@ function connectWebRTC(roomId,offer){
             'ms bw='+(availBw!=null?(availBw/1000).toFixed(0):'-')+'kbps wakeLock='+wlStatus+' visibility='+document.visibilityState);
         }
       }).catch(function(){});
-    },500);
+    },200);
 
     var stallTimer=null;
     vid.addEventListener('waiting',function(){if(!stallTimer)stallTimer=setTimeout(function(){stallTimer=null;vid.play().catch(function(){})},1000)});
