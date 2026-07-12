@@ -88,6 +88,7 @@ var FIREBASE_URL='https://screenbeam-2f810-default-rtdb.europe-west1.firebasedat
 var VIDEO_MAXBITRATE = 3000000;
 var AUDIO_MAXBITRATE = 128000;
 var ICE_GATHER_TIMEOUT = 1500;
+var AV_RESYNC_INTERVAL_MS = 4*60*1000; // periodically re-sync audio/video to stop long-session drift
 
 var hashCode=location.hash.slice(1).toUpperCase().trim();
 var isRecv=hashCode.length>0;
@@ -287,7 +288,7 @@ function switchToReceiver(){
   if(r){location.hash=r.trim().toUpperCase();location.reload()}}
 
 // --- RECEIVER ---
-var recvPc=null,recvTimers=[],recvSyncTimer=null;
+var recvPc=null,recvTimers=[],recvSyncTimer=null,recvResyncTimer=null;
 
 function renderReceiver(){
   document.getElementById('app').innerHTML=
@@ -309,6 +310,7 @@ function renderReceiver(){
 function connectReceiver(){
   recvTimers.forEach(function(t){clearInterval(t);clearTimeout(t)});recvTimers=[];
   if(recvSyncTimer){clearInterval(recvSyncTimer);recvSyncTimer=null}
+  if(recvResyncTimer){clearInterval(recvResyncTimer);recvResyncTimer=null}
   if(recvPc){try{recvPc.close()}catch(e){}recvPc=null}
   var codeInput=document.getElementById('codeInput');
   var roomId=((codeInput?codeInput.value:'')||roomArg).trim().toUpperCase();
@@ -361,6 +363,23 @@ function connectWebRTC(roomId,offer){
     document.getElementById('app').style.display='none';
     vid.srcObject=stream;
     vid.play().catch(function(){vid.muted=true;vid.play().catch(function(){})});
+    // The 500ms jitter-target reset above only fights short-term buffer growth.
+    // Over long sessions, the sender's video capture clock and its separate audio
+    // loopback capture clock drift apart by a few ms per minute - small buffer
+    // hints can't undo that, it just keeps compounding. So on top of that, we
+    // periodically detach/reattach the same stream to the video element, which
+    // forces it to drop its accumulated presentation timeline and re-lock audio
+    // and video from the current live edge of both tracks. Causes a one-frame
+    // blip every few minutes, in exchange for never drifting further than that.
+    recvResyncTimer=setInterval(function(){
+      if(!vid.srcObject)return;
+      var s=vid.srcObject;
+      vid.srcObject=null;
+      requestAnimationFrame(function(){
+        vid.srcObject=s;
+        vid.play().catch(function(){});
+      });
+    },AV_RESYNC_INTERVAL_MS);
     var stallTimer=null;
     vid.addEventListener('waiting',function(){if(!stallTimer)stallTimer=setTimeout(function(){stallTimer=null;vid.play().catch(function(){})},1000)});
     vid.addEventListener('stalled',function(){if(!stallTimer)stallTimer=setTimeout(function(){stallTimer=null;vid.play().catch(function(){})},1000)});
@@ -369,12 +388,14 @@ function connectWebRTC(roomId,offer){
     if(go)try{go.call(vid)}catch(e){}
     vid.onclick=function(){
       if(recvSyncTimer){clearInterval(recvSyncTimer);recvSyncTimer=null}
+      if(recvResyncTimer){clearInterval(recvResyncTimer);recvResyncTimer=null}
       document.body.removeChild(vid);
       document.getElementById('app').style.display='flex';
       renderReceiver()}};
   recvPc.onconnectionstatechange=function(){
     if(recvPc&&recvPc.connectionState==='failed'){recvSetStatus('error','Connection failed');
-      if(recvSyncTimer){clearInterval(recvSyncTimer);recvSyncTimer=null}}};
+      if(recvSyncTimer){clearInterval(recvSyncTimer);recvSyncTimer=null}
+      if(recvResyncTimer){clearInterval(recvResyncTimer);recvResyncTimer=null}}};
   // cleanSDP on the offer before parsing - in case browser stored it with extmap line
   var cleanOffer={type:offer.type,sdp:cleanSDP(offer.sdp)};
   recvPc.setRemoteDescription(new SDESC(cleanOffer))
